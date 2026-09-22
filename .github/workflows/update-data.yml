@@ -1,23 +1,26 @@
-# Henter friske tal fra Energinet og committer data.json tilbage til dette repo.
-# GitHub Pages serverer index.html fra samme repo, saa siden laeser filen fra sin
-# egen origin. Ingen hemmeligheder, ingen noegler, ingen server.
+# Henter friske tal fra Energinet, committer data.json og udgiver siden igen.
 #
 # Hvorfor et job overhovedet: api.energidataservice.dk svarer med et TOMT 200 paa
 # enhver forespoergsel der baerer en Origin-header - altsaa alt hvad en browser
 # sender, fra ethvert domaene, ogsaa "null" fra en fil aabnet fra disken.
 # Forespoergsler UDEN Origin faar fulde data. Denne koersel er ikke en browser.
+#
+# Hvorfor jobbet ogsaa UDGIVER siden: et commit lavet med GITHUB_TOKEN udloeser
+# IKKE et Pages-build. Med klassisk gren-udgivelse ville bottens data.json lande
+# i repoet, mens den udgivne side blev ved med at servere filen fra sidste gang
+# et menneske pushede. Kortet ville se levende ud og vise uger gamle tal.
+# Derfor udgives siden i samme koersel, lige efter at data er skrevet.
 
 name: Opdater data
 
 on:
   schedule:
     # hvert 15. minut. GitHub koerer planlagte jobs naar der er ledig kapacitet,
-    # typisk 5-15 minutter forsinket - derfor et interval og ikke et klokkeslaet.
+    # typisk 5-30 minutter forsinket - derfor et interval og ikke et klokkeslaet.
     - cron: '*/15 * * * *'
   workflow_dispatch:        # kan altid koeres manuelt fra Actions-fanen
   push:
     branches: [main]
-    paths: ['poll.js', '.github/workflows/update-data.yml']
 
 # to koersler maa aldrig skrive data.json samtidig
 concurrency:
@@ -25,12 +28,17 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write           # det eneste jobbet har brug for: at kunne committe
+  contents: write           # committe data.json
+  pages: write              # udgive siden
+  id-token: write           # kraeves af deploy-pages
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 6
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -38,21 +46,52 @@ jobs:
         with:
           node-version: '22'
 
+      # Skriv til en midlertidig fil foerst. Et halvt svar maa aldrig kunne
+      # overskrive en god data.json og blive udgivet.
       - name: Hent friske tal
-        run: node poll.js data.json
-
-      - name: Vis hvad der blev hentet
-        run: cat data.json
+        run: |
+          node poll.js data.new.json
+          node -e "
+            const fs = require('fs');
+            const raw = fs.readFileSync('data.new.json', 'utf8');
+            if (raw.length < 200) throw new Error('kun ' + raw.length + ' bytes - udgives ikke');
+            const j = JSON.parse(raw);
+            const f = j && j.frame;
+            if (!f || !f.time || !f.x || !f.p || !Number.isFinite(f.co2))
+              throw new Error('felter mangler - udgives ikke');
+            const age = (Date.now() - Date.parse(j.measured)) / 60000;
+            if (!(age < 180)) throw new Error('maalingen er ' + Math.round(age) + ' min gammel - udgives ikke');
+            console.log('ok: ' + f.time + ' DK, ' + Math.round(age) + ' min gammel');
+          "
+          mv data.new.json data.json
 
       - name: Commit hvis tallene har aendret sig
         run: |
-          if git diff --quiet -- data.json; then
-            echo "Uaendret - ingen commit."
-            exit 0
-          fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # stage FOERST og tjek saa indekset: daekker baade "uaendret" og
+          # "filen er ikke sporet endnu", som et blankt git diff ikke goer
           git add data.json
-          git commit -m "Data $(date -u '+%Y-%m-%d %H:%M') UTC"
+          if git diff --cached --quiet; then
+            echo "Uaendret."
+          else
+            git commit -m "Data $(date -u '+%Y-%m-%d %H:%M') UTC"
+          fi
+          # Hjerteslag: GitHub slaar planlagte koersler fra efter 60 dage uden
+          # aktivitet i repoet. Botten committer kun naar tallene aendrer sig, saa
+          # en lang flad periode ville lukke jobbet permanent. Et commit hver
+          # 20. dag holder det i live - ca. 18 ekstra commits om aaret.
+          days=$(( ( $(date -u +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          if [ "$days" -ge 20 ]; then
+            date -u '+%Y-%m-%dT%H:%M:%SZ' > .github/sidste-koersel.txt
+            git add .github/sidste-koersel.txt
+            git commit -m "Hjerteslag (ingen dataaendring i $days dage)"
+          fi
           git push
-          echo "data.json opdateret."
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deploy
+        uses: actions/deploy-pages@v4
