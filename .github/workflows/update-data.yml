@@ -46,14 +46,15 @@ jobs:
         with:
           node-version: '22'
 
-      # Skriv til en midlertidig fil foerst. Et halvt svar maa aldrig kunne
-      # overskrive en god data.json og blive udgivet.
+      # Hentes til RUNNER_TEMP, uden for arbejdstraeet. Saa kan filen laegges
+      # paa plads igen efter en reset, og et halvt svar kan aldrig naa at
+      # overskrive en god data.json.
       - name: Hent friske tal
         run: |
-          node poll.js data.new.json
+          node poll.js "$RUNNER_TEMP/data.json"
           node -e "
             const fs = require('fs');
-            const raw = fs.readFileSync('data.new.json', 'utf8');
+            const raw = fs.readFileSync(process.env.RUNNER_TEMP + '/data.json', 'utf8');
             if (raw.length < 200) throw new Error('kun ' + raw.length + ' bytes - udgives ikke');
             const j = JSON.parse(raw);
             const f = j && j.frame;
@@ -63,38 +64,49 @@ jobs:
             if (!(age < 180)) throw new Error('maalingen er ' + Math.round(age) + ' min gammel - udgives ikke');
             console.log('ok: ' + f.time + ' DK, ' + Math.round(age) + ' min gammel');
           "
-          mv data.new.json data.json
 
       - name: Commit hvis tallene har aendret sig
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # stage FOERST og tjek saa indekset: daekker baade "uaendret" og
-          # "filen er ikke sporet endnu", som et blankt git diff ikke goer
-          git add data.json
-          if git diff --cached --quiet; then
-            echo "Uaendret."
-          else
-            git commit -m "Data $(date -u '+%Y-%m-%d %H:%M') UTC"
-          fi
-          # Hjerteslag: GitHub slaar planlagte koersler fra efter 60 dage uden
-          # aktivitet i repoet. Botten committer kun naar tallene aendrer sig, saa
-          # en lang flad periode ville lukke jobbet permanent. Et commit hver
-          # 20. dag holder det i live - ca. 18 ekstra commits om aaret.
-          days=$(( ( $(date -u +%s) - $(git log -1 --format=%ct) ) / 86400 ))
-          if [ "$days" -ge 20 ]; then
-            date -u '+%Y-%m-%dT%H:%M:%SZ' > .github/sidste-koersel.txt
-            git add .github/sidste-koersel.txt
-            git commit -m "Hjerteslag (ingen dataaendring i $days dage)"
-          fi
-          # To koersler kan naa at overlappe - en manuel start oven i en
-          # planlagt, eller et push fra en maskine. Taber man kaploebet, er
-          # svaret at hente den andens commit og laegge sit eget ovenpaa,
-          # ikke at fejle. Rebase, fordi begge sider kun roerer data.json.
+
+          # To koersler kan overlappe - en manuel start oven i en planlagt.
+          # Taber man kaploebet, nytter rebase ikke: begge sider har skrevet
+          # den samme ene linje i data.json, saa det giver altid en konflikt.
+          # For en genereret fil er svaret i stedet: tag den nyeste remote som
+          # udgangspunkt og laeg de friske tal ovenpaa. Ingen konflikt mulig.
           for n in 1 2 3; do
+            cp "$RUNNER_TEMP/data.json" data.json
+
+            # stage FOERST og tjek saa indekset: daekker baade "uaendret" og
+            # "filen er ikke sporet endnu", som et blankt git diff ikke goer
+            git add data.json
+            if git diff --cached --quiet; then
+              echo "Uaendret."
+            else
+              git commit -m "Data $(date -u '+%Y-%m-%d %H:%M') UTC"
+            fi
+
+            # Hjerteslag: GitHub slaar planlagte koersler fra efter 60 dage uden
+            # aktivitet i repoet. Botten committer kun naar tallene aendrer sig,
+            # saa en lang flad periode ville lukke jobbet permanent. Et commit
+            # hver 20. dag holder det i live - ca. 18 ekstra commits om aaret.
+            days=$(( ( $(date -u +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+            if [ "$days" -ge 20 ]; then
+              date -u '+%Y-%m-%dT%H:%M:%SZ' > .github/sidste-koersel.txt
+              git add .github/sidste-koersel.txt
+              git commit -m "Hjerteslag (ingen dataaendring i $days dage)"
+            fi
+
+            if git diff --quiet HEAD origin/main 2>/dev/null; then
+              echo "Intet nyt at pushe."
+              exit 0
+            fi
             if git push; then exit 0; fi
-            echo "push afvist - henter og proever igen ($n/3)"
-            git pull --rebase origin main || exit 1
+
+            echo "push afvist - henter nyeste og laegger tallene ovenpaa ($n/3)"
+            git fetch -q origin main
+            git reset -q --hard origin/main
           done
           echo "::error::kunne ikke pushe efter 3 forsoeg"
           exit 1
