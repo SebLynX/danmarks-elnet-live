@@ -15,9 +15,11 @@ name: Opdater data
 
 on:
   schedule:
-    # hvert 15. minut. GitHub koerer planlagte jobs naar der er ledig kapacitet,
-    # typisk 5-30 minutter forsinket - derfor et interval og ikke et klokkeslaet.
-    - cron: '*/15 * * * *'
+    # Hvert 15. minut, men forskudt vaek fra hele og halve timer. GitHub skriver
+    # selv at planlagte job forsinkes naar der er travlt, og at starten af hver
+    # time er det travleste tidspunkt - alle skriver '0 * * * *'. Minut 7, 22,
+    # 37 og 52 rammer et roligere hul i koeen.
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:        # kan altid koeres manuelt fra Actions-fanen
   push:
     branches: [main]
