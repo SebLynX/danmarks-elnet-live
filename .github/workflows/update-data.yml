@@ -87,7 +87,17 @@ jobs:
             git add .github/sidste-koersel.txt
             git commit -m "Hjerteslag (ingen dataaendring i $days dage)"
           fi
-          git push
+          # To koersler kan naa at overlappe - en manuel start oven i en
+          # planlagt, eller et push fra en maskine. Taber man kaploebet, er
+          # svaret at hente den andens commit og laegge sit eget ovenpaa,
+          # ikke at fejle. Rebase, fordi begge sider kun roerer data.json.
+          for n in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "push afvist - henter og proever igen ($n/3)"
+            git pull --rebase origin main || exit 1
+          done
+          echo "::error::kunne ikke pushe efter 3 forsoeg"
+          exit 1
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
