@@ -1,0 +1,58 @@
+# Henter friske tal fra Energinet og committer data.json tilbage til dette repo.
+# GitHub Pages serverer index.html fra samme repo, saa siden laeser filen fra sin
+# egen origin. Ingen hemmeligheder, ingen noegler, ingen server.
+#
+# Hvorfor et job overhovedet: api.energidataservice.dk svarer med et TOMT 200 paa
+# enhver forespoergsel der baerer en Origin-header - altsaa alt hvad en browser
+# sender, fra ethvert domaene, ogsaa "null" fra en fil aabnet fra disken.
+# Forespoergsler UDEN Origin faar fulde data. Denne koersel er ikke en browser.
+
+name: Opdater data
+
+on:
+  schedule:
+    # hvert 15. minut. GitHub koerer planlagte jobs naar der er ledig kapacitet,
+    # typisk 5-15 minutter forsinket - derfor et interval og ikke et klokkeslaet.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:        # kan altid koeres manuelt fra Actions-fanen
+  push:
+    branches: [main]
+    paths: ['poll.js', '.github/workflows/update-data.yml']
+
+# to koersler maa aldrig skrive data.json samtidig
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+
+permissions:
+  contents: write           # det eneste jobbet har brug for: at kunne committe
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Hent friske tal
+        run: node poll.js data.json
+
+      - name: Vis hvad der blev hentet
+        run: cat data.json
+
+      - name: Commit hvis tallene har aendret sig
+        run: |
+          if git diff --quiet -- data.json; then
+            echo "Uaendret - ingen commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git commit -m "Data $(date -u '+%Y-%m-%d %H:%M') UTC"
+          git push
+          echo "data.json opdateret."
