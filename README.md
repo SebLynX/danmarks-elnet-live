@@ -1,5 +1,9 @@
 # Danmarks Elnet — live
 
+> **Privat hobbyprojekt.** Ikke et officielt Energinet-værktøj og ikke lavet af eller
+> for Energinet. Tallene er Energinets **åbne data**, og de er krediteret som sådan —
+> men kortet, designet og alle fejl i det er mine egne.
+
 Et 3D-kort over det danske elsystem: produktion, CO₂, udveksling med nabolandene og
 day-ahead-priser. Tallene opdaterer sig selv.
 
