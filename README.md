@@ -6,7 +6,9 @@ day-ahead-priser. Tallene opdaterer sig selv.
 **Se kortet her: https://seblynx.github.io/danmarks-elnet-live/**
 
 Kortet er én HTML-fil. Ingen backend, ingen API-nøgle, ingen installation. Ved siden af
-filen ligger `data.json` på ca. 470 bytes med det nyeste måleøjeblik fra Energinet.
+filen ligger to datafiler: `data.json` på ca. 470 bytes med det nyeste måleøjeblik, og
+`hist.json` på ca. 70 KB med de sidste 30 dages historik i timeopløsning — den der
+tegner tidslinjen under kortet.
 
 Dette repo indeholder det færdigbyggede kort. Selve kildekoden ligger i et privat repo.
 
@@ -14,27 +16,49 @@ Dette repo indeholder det færdigbyggede kort. Selve kildekoden ligger i et priv
 
 ## Tallene opdaterer sig selv
 
-`.github/workflows/update-data.yml` kører hvert 15. minut. Hver kørsel gør fire ting:
+`.github/workflows/update-data.yml` er sat til at køre hvert 15. minut. Hver kørsel gør
+fire ting:
 
 1. Henter `PowerSystemRightNow` og `DayAheadPrices` fra Energinet Energi Data Service.
 2. Tjekker at alle felter er tal, og at tidsstemplet ser rigtigt ud.
 3. Skriver resultatet til `data.json`.
 4. Committer filen tilbage til repoet, men kun hvis tallene har ændret sig.
 
-GitHub Pages serverer `data.json` fra samme mappe som kortet, så browseren henter den
+**Tidslinjen fornyes for sig.** Er `hist.json` mere end 6 timer gammel, henter kørslen
+også de sidste 30 dage forfra hos Energinet og lægger dem ved siden af. Historikken
+bygges altså ikke af vores egne målinger — den hentes komplet fra kilden hver gang. Det
+er med vilje: kørslerne springer tider over (se nedenfor), og en selvbygget historik
+ville få huller præcis der hvor en kørsel udeblev. Hentes den forfra, er rækken hel og i
+timeopløsning uanset hvor ofte jobbet får lov at køre.
+
+GitHub Pages serverer begge filer fra samme mappe som kortet, så browseren henter dem
 fra sin egen adresse.
 
 Fejler hentningen, stopper kørslen med en fejl og skriver **ikke** filen. Så bliver den
 forrige `data.json` liggende urørt i stedet for at blive erstattet af noget halvt.
 
-**Hvor gamle er tallene i praksis?** Energinet måler hvert minut. Workflowet henter hvert
-15. minut, GitHub kan forsinke planlagte kørsler 5-15 minutter når der er travlt, og
-GitHub Pages cacher filen i op til 10 minutter. Regn med at målingen på skærmen er op til
-en halv time gammel. Kortet viser selv alderen ved siden af LIVE-mærket.
+**Hvor gamle er tallene i praksis? Regn med timer, ikke minutter.** Tidsplanen beder om
+hvert 15. minut, men GitHub leverer kun en lille del af de bestilte tider. Målt på dette
+repo: 5 kørsler ud af ca. 62 bestilte, med mellemrum på 2 til 5 timer.
+
+Det er ikke en fejl i opsætningen, og det kan ikke rettes herfra. GitHub skriver selv at
+planlagte kørsler forsinkes når der er travlt, og at *"some queued jobs may be dropped"*
+— droppes, ikke sættes i kø. Til sammenligning blev to fremmede offentlige repoer målt:
+et seks år gammelt repo med præcis samme tidsplan får samme andel, og et repo der beder
+om hvert 5. minut får samme mellemrum. Hverken alder, aktivitet eller en tættere tidsplan
+ændrer noget.
+
+Kortet viser selv alderen ved siden af LIVE-mærket, så man aldrig er i tvivl.
 
 Er `data.json` mere end 3 timer gammel, bliver den afvist. Kortet skifter til **OFFLINE**
-og viser den indlejrede 30-dages historik i stedet. Hellere ærligt OFFLINE end gamle tal
-med et LIVE-mærkat på.
+og viser historikken i stedet. Hellere ærligt OFFLINE end gamle tal med et LIVE-mærkat
+på. Med mellemrum på op til 5 timer sker det jævnligt — og det er den rigtige opførsel,
+ikke en fejl.
+
+**Skal tallene være friske hver 15. minut**, kan det ikke lade sig gøre med GitHubs
+gratis tidsplan. Det kræver enten en reverse proxy på den server der viser kortet (så
+browseren selv kalder API'et hvert minut), eller en udefrakommende tidsplan der starter
+workflowet. Se `SERVER-SETUP.md`.
 
 Repoet er offentligt, og GitHub Actions er gratis uden minutgrænse for offentlige repos.
 En kørsel tager ca. et minut.
@@ -188,11 +212,19 @@ ikke offentlige, så laget er statisk topologi.
 
 | Fil | Hvad den er |
 |---|---|
-| `index.html` | Selve kortet. Én fil på ca. 1 MB med alt indeni — 3D-motor, geografi, infrastruktur og 30 dages historik |
+| `index.html` | Selve kortet. Én fil på ca. 1 MB med alt indeni — 3D-motor, geografi, infrastruktur og en indbygget 30-dages historik som reserve |
 | `data.json` | Det nyeste måleøjeblik, ca. 470 bytes. Skrives af workflowet |
-| `poll.js` | Scriptet der henter tallene. Node 18+, ingen pakker. Kan køres hvor som helst |
-| `.github/workflows/update-data.yml` | Tidsplanen. Kører `poll.js` og committer `data.json` |
+| `hist.json` | 30 dages historik i timeopløsning, ca. 70 KB. Tegner tidslinjen. Fornyes når den er over 6 timer gammel |
+| `poll.js` | Henter det nyeste måleøjeblik. Node 18+, ingen pakker. Kan køres hvor som helst |
+| `fetch.js` | Henter de 30 dages historik. Samme krav, ingen pakker |
+| `compact.js` | Laver `fetch.js`-resultatet om til den lille `hist.json` |
+| `.github/workflows/update-data.yml` | Tidsplanen. Kører scripterne og committer filerne |
 | `README.md` | Denne fil |
+
+Kortet virker **uden** `hist.json` — så bruger det den historik der er bygget ind i
+`index.html`. Den er ældre, men korrekt, og det er den der gør at en enkelt downloadet
+HTML-fil stadig virker uden net. Den nyeste af de to vinder altid, så en gammel udgivet
+`hist.json` kan aldrig slå en nybygget indbygget.
 
 Fordi workflowet committer `data.json`, får repoet en lille commit hver gang tallene
 ændrer sig. Det er meningen, og det fylder næsten ingenting.

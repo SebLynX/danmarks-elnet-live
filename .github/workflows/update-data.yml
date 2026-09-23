@@ -10,6 +10,14 @@
 # i repoet, mens den udgivne side blev ved med at servere filen fra sidste gang
 # et menneske pushede. Kortet ville se levende ud og vise uger gamle tal.
 # Derfor udgives siden i samme koersel, lige efter at data er skrevet.
+#
+# To filer, to kadencer:
+#   data.json  ~470 bytes, EEN maaling, "lige nu"-tallene. Hver koersel.
+#   hist.json  ~70 KB, 30 dages historik i timer, tidslinjen under kortet.
+#              Kun naar den er mere end 6 timer gammel.
+# Historikken hentes forfra hos Energinet i stedet for at blive bygget af vores
+# egne maalinger. GitHub koerer i praksis jobbet hver 2.-5. time, saa en
+# selvbygget historik ville faa huller praecis der hvor jobbet sprang over.
 
 name: Opdater data
 
@@ -19,8 +27,17 @@ on:
     # selv at planlagte job forsinkes naar der er travlt, og at starten af hver
     # time er det travleste tidspunkt - alle skriver '0 * * * *'. Minut 7, 22,
     # 37 og 52 rammer et roligere hul i koeen.
+    #
+    # Bemaerk: GitHub leverer i praksis kun en lille del af de bestilte tider.
+    # Det er dokumenteret adfaerd ("some queued jobs may be dropped"), ikke en
+    # fejl i denne fil, og det kan ikke rettes herfra.
     - cron: '7,22,37,52 * * * *'
   workflow_dispatch:        # kan altid koeres manuelt fra Actions-fanen
+    inputs:
+      fornyhistorik:
+        description: 'Hent ogsaa 30 dages historik forfra, uanset alder'
+        type: boolean
+        default: false
   push:
     branches: [main]
 
@@ -30,14 +47,14 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write           # committe data.json
+  contents: write           # committe data.json og hist.json
   pages: write              # udgive siden
   id-token: write           # kraeves af deploy-pages
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 12
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -67,6 +84,68 @@ jobs:
             console.log('ok: ' + f.time + ' DK, ' + Math.round(age) + ' min gammel');
           "
 
+      # Alder maales paa hvornaar filen sidst blev AENDRET, ikke paa klokken.
+      # Jobbet springer de fleste planlagte tider over, saa en tidsbaseret regel
+      # ("kun i lige timer") ville ramme ved siden af. Filens egen alder retter
+      # sig selv: uanset hvornaar jobbet faar lov at koere, fornyes historikken
+      # foerste gang den er for gammel.
+      - name: Skal historikken fornyes?
+        id: histcheck
+        run: |
+          if [ "${{ inputs.fornyhistorik }}" = "true" ]; then
+            echo "tvunget fornyelse valgt ved manuel start"
+            echo "refresh=yes" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ ! -f hist.json ]; then
+            echo "hist.json findes ikke - hentes"
+            echo "refresh=yes" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # git log lykkes (exit 0) med TOM uddata naar filen ikke har nogen
+          # commits endnu, saa "|| echo 0" faanger det ikke. Saet nulstillingen
+          # eksplicit i stedet for at stole paa at tom = 0 i en beregning.
+          last=$(git log -1 --format=%ct -- hist.json 2>/dev/null || true)
+          last=${last:-0}
+          age=$(( $(date -u +%s) - last ))
+          if [ "$last" = "0" ] || [ "$age" -gt 21600 ]; then
+            echo "historikken er $(( age / 3600 )) timer gammel - fornyes"
+            echo "refresh=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "historikken er $(( age / 60 )) min gammel - beholdes"
+            echo "refresh=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      # continue-on-error med vilje: historikken er en bonus oven paa de friske
+      # tal. Falder Energinet ud midt i de ~31 kald, skal data.json stadig
+      # opdateres og siden stadig udgives. Uden hist.json falder kortet tilbage
+      # til den historik der er bygget ind i index.html - aeldre, men korrekt.
+      - name: Hent 30 dages historik
+        id: hist
+        if: steps.histcheck.outputs.refresh == 'yes'
+        continue-on-error: true
+        timeout-minutes: 8
+        run: |
+          # koeres i RUNNER_TEMP: fetch.js skriver power_raw.json og history.json
+          # med faste navne i den mappe den startes fra, og de maa ikke havne i
+          # arbejdstraeet - "path: ." nedenfor udgiver alt hvad der ligger der.
+          cd "$RUNNER_TEMP"
+          node "$GITHUB_WORKSPACE/fetch.js"
+          node "$GITHUB_WORKSPACE/compact.js"
+          node -e "
+            const fs = require('fs');
+            const h = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/hist_compact.json', 'utf8'));
+            if (!Number.isInteger(h.n) || h.n < 600) throw new Error('kun ' + h.n + ' timer - udgives ikke');
+            for (const c of ['off','co2','wOff','wOn','sol','cen','dec','sum'])
+              if (!Array.isArray(h[c]) || h[c].length !== h.n) throw new Error('kolonne ' + c + ' passer ikke');
+            const t = h.t0;
+            const end = Date.UTC(+t.slice(0,4), +t.slice(5,7)-1, +t.slice(8,10), +t.slice(11,13)) + h.off[h.n-1]*3600000;
+            const lagH = (Date.now() - end) / 3600000;
+            if (!(lagH < 30)) throw new Error('slutter ' + Math.round(lagH) + ' timer tilbage - udgives ikke');
+            console.log('ok: ' + h.n + ' timer, slutter ' + Math.round(lagH*10)/10 + ' t tilbage');
+          "
+          cp "$RUNNER_TEMP/hist_compact.json" "$RUNNER_TEMP/hist.json"
+
       - name: Commit hvis tallene har aendret sig
         run: |
           git config user.name  "github-actions[bot]"
@@ -77,16 +156,27 @@ jobs:
           # den samme ene linje i data.json, saa det giver altid en konflikt.
           # For en genereret fil er svaret i stedet: tag den nyeste remote som
           # udgangspunkt og laeg de friske tal ovenpaa. Ingen konflikt mulig.
+          #
+          # Bemaerk at filerne kopieres ind INDE i loekken, efter reset. Gjorde
+          # man det udenfor, ville "git reset --hard" i et nyt forsoeg spise dem.
           for n in 1 2 3; do
             cp "$RUNNER_TEMP/data.json" data.json
+            git add data.json
+            if [ -f "$RUNNER_TEMP/hist.json" ]; then
+              cp "$RUNNER_TEMP/hist.json" hist.json
+              git add hist.json
+            fi
 
             # stage FOERST og tjek saa indekset: daekker baade "uaendret" og
             # "filen er ikke sporet endnu", som et blankt git diff ikke goer
-            git add data.json
             if git diff --cached --quiet; then
               echo "Uaendret."
             else
-              git commit -m "Data $(date -u '+%Y-%m-%d %H:%M') UTC"
+              if git diff --cached --name-only | grep -q '^hist.json$'; then
+                git commit -m "Data + historik $(date -u '+%Y-%m-%d %H:%M') UTC"
+              else
+                git commit -m "Data $(date -u '+%Y-%m-%d %H:%M') UTC"
+              fi
             fi
 
             # Hjerteslag: GitHub slaar planlagte koersler fra efter 60 dage uden

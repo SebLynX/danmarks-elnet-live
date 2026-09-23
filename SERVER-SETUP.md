@@ -107,6 +107,22 @@ sin egen forespørgsel, men et mellemliggende CDN kan stadig nå at gemme den.
 
 Ved mulighed A skal kun `index.html` uploades.
 
+### Tidslinjen nederst på kortet
+
+Den kører for sig selv og kræver **ingenting** af serveren. Kortet henter
+`hist.json` — 30 dages historik i timeopløsning — fra det offentlige GitHub-repo på
+en fast adresse, og den adresse svarer fra et hvilket som helst domæne. Filen
+fornyes der hver 6. time.
+
+Kan adressen ikke nås — lukket firewall, ingen internetadgang fra klienten — falder
+kortet tilbage til den historik der er bygget ind i `index.html`. Den er ældre, men
+korrekt, og kortet virker uændret i øvrigt. Der er altså intet at sætte op og intet
+der går i stykker.
+
+Vil man alligevel have historikken lokalt, kan `hist.json` lægges ved siden af
+`index.html`. Så bruges den lokale fil. Kortet tager altid den nyeste af de to, så
+en glemt og forældet lokal fil kan ikke komme til at overskygge den friske.
+
 ## Sådan ser man at det virker
 
 Åbn siden. Øverst til højre skal der stå **LIVE** med et grønt punkt, og feltet

@@ -1,1 +1,7 @@
 node_modules/
+
+# fetch.js mellemresultater. De hoerer ikke i repoet, og de maa isaer ikke
+# ligge i mappen naar siden udgives: upload-pages-artifact tager "path: ."
+# med alt hvad der ligger der, ogsaa filer git ikke sporer.
+power_raw.json
+history.json
