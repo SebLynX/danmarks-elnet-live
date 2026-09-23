@@ -60,6 +60,11 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Historikkens alder tjekkes med git log -- hist.json.
+          # En shallow checkout faar seneste data-commit til at se ud som
+          # hist.jsons sidste aendring, saa historikken fornyes for sent.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
