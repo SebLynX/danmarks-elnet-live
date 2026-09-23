@@ -138,9 +138,15 @@ jobs:
             if (!Number.isInteger(h.n) || h.n < 600) throw new Error('kun ' + h.n + ' timer - udgives ikke');
             for (const c of ['off','co2','wOff','wOn','sol','cen','dec','sum'])
               if (!Array.isArray(h[c]) || h[c].length !== h.n) throw new Error('kolonne ' + c + ' passer ikke');
+            // t0 og off er dansk vaegur, ikke UTC. Sammenlign derfor med dansk
+            // vaegur ogsaa - ellers er svaret 1-2 timer forkert alt efter
+            // sommertid, og kan endda blive negativt.
             const t = h.t0;
             const end = Date.UTC(+t.slice(0,4), +t.slice(5,7)-1, +t.slice(8,10), +t.slice(11,13)) + h.off[h.n-1]*3600000;
-            const lagH = (Date.now() - end) / 3600000;
+            const dk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }));
+            const nowDK = Date.UTC(dk.getFullYear(), dk.getMonth(), dk.getDate(), dk.getHours(), dk.getMinutes());
+            const lagH = (nowDK - end) / 3600000;
+            if (!(lagH >= 0)) throw new Error('slutter ' + Math.round(-lagH) + ' timer ude i fremtiden - udgives ikke');
             if (!(lagH < 30)) throw new Error('slutter ' + Math.round(lagH) + ' timer tilbage - udgives ikke');
             console.log('ok: ' + h.n + ' timer, slutter ' + Math.round(lagH*10)/10 + ' t tilbage');
           "
