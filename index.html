@@ -523,6 +523,23 @@ body.kiosk.story::before,body.kiosk.story::after{transform:translateY(0)}
 #kioskCap .kk.last{color:var(--dim)}
 body.kiosk::before,body.kiosk::after{background:#FAF7F2}
 
+/* phones: the first-run box scrolls inside its backdrop and closes on × or a tap outside;
+   the desktop left/bottom offsets must not leak into the stacked layout (they pushed the legend over the chips) */
+#fr{overflow-y:auto;place-items:start center;padding:16px 0;overscroll-behavior:contain}
+#frc{margin:auto;position:relative}
+#frc h2{padding-right:34px}
+#frX{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:none;
+  color:var(--dim);font:400 20px/1 var(--sans);cursor:pointer;display:grid;place-items:center}
+#frX:hover{color:var(--ink)}
+@media (max-width:600px),(max-height:600px){
+  #frc{padding:18px 18px 14px}
+  #frc .fsub{margin-bottom:10px}
+  #frc li{font-size:var(--fs-sm);line-height:1.45;margin-bottom:7px}
+  #frc ul{margin-bottom:10px}
+  #frc .btns{position:sticky;bottom:0;background:inherit;padding:10px 0 2px}
+  .fbtn{flex:1 1 auto}
+}
+@media (max-width:1024px){ #bottom,#foot{left:auto;right:auto;bottom:auto} }
 </style>
 </head>
 <body>
@@ -616,7 +633,8 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
 </div>
 
 <div id="fr" style="display:none">
-  <div id="frc">
+  <div id="frc" role="dialog" aria-modal="true">
+    <button id="frX" type="button" aria-label="Luk">×</button>
     <h2 data-i18n="frTitle">Danmarks elnet — lige nu</h2>
     <div class="fsub" data-i18n="frSub">Energinet Energi Data Service · åbne data</div>
     <ul>
@@ -3135,6 +3153,8 @@ let last = performance.now(), introDone = false, elapsed = 0, lastSpark = 0;
 /* first-run explainer — shows after the loading veil, dismisses on choice or after 18 s */
 function dismissFR() { const el = $('#fr'); if (el) { el.classList.add('gone'); setTimeout(() => el.remove(), 600); } }
 $('#frStart').onclick = dismissFR;
+$('#frX').onclick = dismissFR;
+$('#fr').addEventListener('click', e => { if (e.target.id === 'fr') dismissFR(); });   // tap outside the box closes it
 $('#frWow').onclick = () => {
   dismissFR();
   const chip = $$('#chips .chip').find(c => /Negativ pris|Negative price/.test(c.textContent));
