@@ -7,7 +7,7 @@
 Et 3D-kort over det danske elsystem: produktion, CO₂, udveksling med nabolandene og
 day-ahead-priser. Tallene opdaterer sig selv.
 
-**Se kortet her: https://seblynx.github.io/danmarks-elnet-live/**
+**Se kortet her: https://el.gridkort.dk/** (den gamle adresse seblynx.github.io/danmarks-elnet-live sender automatisk videre)
 
 Kortet er én HTML-fil. Ingen backend, ingen API-nøgle, ingen installation. Ved siden af
 filen ligger to datafiler: `data.json` på ca. 470 bytes med det nyeste måleøjeblik, og
@@ -102,7 +102,7 @@ browseren har lov til at læse.
 
 ### 1. Åbn linket
 
-https://seblynx.github.io/danmarks-elnet-live/
+https://el.gridkort.dk/
 
 Ikke andet. Det virker på telefon, tablet og storskærm.
 
