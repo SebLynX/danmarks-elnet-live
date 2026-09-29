@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Danmarks Elnet · Live</title>
-<meta name="description" content="Privat hobbyprojekt — ikke et officielt Energinet-værktøj. Interaktivt 3D-kort over det danske elsystem: produktion, CO₂-intensitet, day-ahead-priser og strømmen på hver udlandsforbindelse, opdateret løbende. Data fra Energinet Energi Data Service (åbne data).">
+<meta name="description" content="Interaktivt 3D-kort over det danske elsystem: produktion, CO₂-intensitet, day-ahead-priser og strømmen på hver udlandsforbindelse, opdateret løbende. Uafhængigt kort bygget på åbne data fra Energinet Energi Data Service. Ikke et officielt Energinet-værktøj.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Danmarks Elnet">
 <meta property="og:locale" content="da_DK">
 <meta property="og:title" content="Danmarks Elnet · Live">
-<meta property="og:description" content="Privat hobbyprojekt — ikke et officielt Energinet-værktøj. Interaktivt 3D-kort over det danske elsystem: produktion, CO₂-intensitet, day-ahead-priser og strømmen på hver udlandsforbindelse, opdateret løbende. Data fra Energinet Energi Data Service (åbne data).">
+<meta property="og:description" content="Interaktivt 3D-kort over det danske elsystem: produktion, CO₂-intensitet, day-ahead-priser og strømmen på hver udlandsforbindelse, opdateret løbende. Uafhængigt kort bygget på åbne data fra Energinet Energi Data Service. Ikke et officielt Energinet-værktøj.">
 <meta property="og:url" content="https://el.gridkort.dk/">
 <meta property="og:image" content="https://el.gridkort.dk/preview.png">
 <meta property="og:image:type" content="image/png">
@@ -498,24 +498,22 @@ body.kiosk.story::before,body.kiosk.story::after{transform:translateY(0)}
 .lbl.link{color:var(--ink);background:rgba(255,253,249,.90);
   border:1px solid var(--line);text-shadow:none}
 
-/* ---------- the disclaimer ----------
-   Deliberately not a footnote. This build gets shared as a bare link, so
-   the line has to survive someone landing on it with no context at all:
-   it sits in the intro box on first open, and stays in the footer after. */
+/* ---------- the independence line ----------
+   This build gets shared as a bare link, so it still says what it is:
+   an independent map on open data, not an official tool. One quiet line
+   at the foot of the legend, not a warning box - the full disclaimer
+   lives on gridkort.dk. Not repeated in the intro box. */
 .priv{
   display:block;
-  margin:10px 0 0;
-  padding:8px 11px;
-  border:1px solid var(--imp);
-  border-radius:var(--radius-xs);
-  background:#FBF0E8;
-  color:var(--imp);
+  margin:8px 0 0;
+  padding:0 26px 0 0;   /* clears the i-button in the corner of #foot */
+  color:var(--dim);
   font-size:var(--fs-xs,12px);
   line-height:1.45;
-  font-weight:600;
+  font-weight:400;
 }
-#frc .priv{margin-top:14px}
-#foot .priv{margin-top:8px;font-weight:500}
+#frc .priv{display:none}
+@media (max-width:1024px){ #foot .priv{padding-right:42px} }   /* the i-button grows to 34px */
 
 /* ---------- kiosk ---------- */
 #kioskCap .kh,#kioskCap .ks{text-shadow:0 0 14px #FAF7F2}
@@ -625,7 +623,7 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
     <div class="lgd tgl" id="lg150" role="button" tabindex="0" aria-pressed="true">
       <span class="sw g150"></span><span data-i18n="lg150">132/150 kV-nettet</span></div>
     <div class="keys" data-i18n="keys"></div>
-    <div class="priv" data-i18n="privNote">Privat hobbyprojekt. Ikke et officielt Energinet-værktøj og ikke lavet af eller for Energinet. Data er Energinets åbne data.</div>
+    <div class="priv" data-i18n="privNote">Uafhængigt kort bygget på Energinets åbne data. Ikke et officielt Energinet-værktøj.</div>
     <button id="infoBtn" type="button" aria-expanded="false">i</button>
     <div id="infoPan" hidden><span data-i18n="foot"></span></div>
   </div>
@@ -642,7 +640,7 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
       <li><span class="ic">🔁</span><span data-i18n="frB2"><b style="color:var(--imp)">Ravgul</b> = import til Danmark · <b style="color:var(--exp)">grøn</b> = eksport. Jo tykkere linje, jo mere strøm.</span></li>
       <li><span class="ic">🕰</span><span data-i18n="frB3">Tidslinjen nederst afspiller de sidste 30 dage — prøv knappen «Negativ pris».</span></li>
     </ul>
-    <div class="priv" data-i18n="privNote">Privat hobbyprojekt. Ikke et officielt Energinet-værktøj og ikke lavet af eller for Energinet. Data er Energinets åbne data.</div>
+    <div class="priv" data-i18n="privNote">Uafhængigt kort bygget på Energinets åbne data. Ikke et officielt Energinet-værktøj.</div>
     <div class="btns">
       <button class="fbtn pri" id="frStart" data-i18n="frStart">Se lige nu</button>
       <button class="fbtn" id="frWow" data-i18n="frWow">Vis mig den vildeste time</button>
@@ -2200,7 +2198,7 @@ const I18N = {
     updMeas: 'måling <b>{a}</b> gammel',
     frTitle: 'Danmarks elnet — lige nu', frSub: 'Energinet Energi Data Service · åbne data',
     /* only shown in the privat build — see .priv in the base sheet */
-    privNote: 'Privat hobbyprojekt. Ikke et officielt Energinet-værktøj og ikke lavet af eller for Energinet. Data er Energinets åbne data.',
+    privNote: 'Uafhængigt kort bygget på Energinets åbne data. Ikke et officielt Energinet-værktøj.',
     frB1: 'Tallene kommer fra Energinets åbne data — produktion, priser, CO₂ og udveksling. Tal mærket ≈ er beregnede andele, ikke målinger pr. anlæg. Med live-forbindelse opdateres alt hvert minut; ellers vises de seneste 30 dages historik.',
     /* The words carry the colour instead of naming it. Naming a hue breaks
        the moment a build changes palette - "ravgul" was wrong in the privat
@@ -2287,7 +2285,7 @@ const I18N = {
     updLive: 'updated <b>{a}s</b> ago · next in {b}s', updWait: 'fetching data…',
     updMeas: 'measurement <b>{a}</b> old',
     frTitle: "Denmark's power grid — right now", frSub: 'Energinet Energy Data Service · open data',
-    privNote: 'Personal hobby project. Not an official Energinet tool, and not made by or for Energinet. The data is Energinet open data.',
+    privNote: 'Independent map built on Energinet open data. Not an official Energinet tool.',
     frB1: "The numbers come from Energinet's open data — generation, prices, CO₂ and exchange. Figures marked ≈ are computed shares, not per-site measurements. With a live connection everything updates every minute; otherwise you see the last 30 days of history.",
     frB2: '<b style="color:var(--imp)">Import</b> into Denmark · <b style="color:var(--exp)">export</b> from Denmark. The thicker the line, the more power.',
     frB3: 'The timeline at the bottom replays the last 30 days — try the «Negative price» button.',
