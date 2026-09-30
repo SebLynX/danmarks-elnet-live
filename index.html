@@ -2063,6 +2063,12 @@ const EVENTS = findEvents();
    Pages first (same place the map is published), raw as a second chance in
    case Pages is ever turned off. */
 const DATA_URLS = [
+  /* the gridkort.dk Worker (worker/worker.js): a fresh frame straight from
+     Energinet, at most about a minute old, readable from el.gridkort.dk, the
+     old GitHub address, Energinet hosting and a copy opened from disk. First,
+     because nothing else is this fresh. If it is down, the files below still
+     keep the map going. */
+  'https://api.gridkort.dk/elnet/now.json',
   'data.json',
   /* raw before Pages on purpose. Measured 22-09-2026: raw answers every
      request from origin (no Age header, even on a repeat), while Pages serves
@@ -2104,6 +2110,8 @@ const dkNow = () => dkClock(0);
 
 /* Source order, and why it is this order.
 
+   0. api.gridkort.dk (DATA_URLS[0]) — a Cloudflare Worker that fetches from
+      Energinet and caches for 60 s, so this is normally the one that wins.
    1. data.json beside the page — whoever deployed it sets the cadence.
    2. /api/ on this host — a reverse proxy is per-minute fresh, so it beats any
       published file. Only reachable when a host actually proxies it; on a
