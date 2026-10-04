@@ -1051,7 +1051,7 @@ function flyTo(t, dist, theta, phi) {
   cam.t0 = performance.now();
 }
 (() => {
-  let down = false, pan = false, lx = 0, ly = 0, pinch = 0, lastC = null;
+  let down = false, pan = false, lx = 0, ly = 0, pinch = 0, lastC = null, lastA = null;
   const pointers = new Set();
   // user input must never be damped by the ease-in ramp — pin it at full rate
   const mark = () => { cam.t0 = 0; };
@@ -1066,7 +1066,7 @@ function flyTo(t, dist, theta, phi) {
   canvas.addEventListener('contextmenu', e => e.preventDefault());
   canvas.addEventListener('pointerdown', e => {
     pointers.add(e.pointerId);
-    down = true; pan = e.button === 2 || e.shiftKey;
+    down = true; pan = !(e.button === 2 || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey);   // left drag pans (a touchpad can always do that); right drag or a modifier rotates and tilts
     lx = e.clientX; ly = e.clientY; mark();
   });
   addEventListener('pointerup', e => { pointers.delete(e.pointerId); down = false; });
@@ -1094,11 +1094,15 @@ function flyTo(t, dist, theta, phi) {
     const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
     const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
     const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+    /* two fingers: pinch zooms, moving pans, twisting rotates */
+    const ang = Math.atan2(e.touches[1].clientY - e.touches[0].clientY, e.touches[1].clientX - e.touches[0].clientX);
+    if (lastA !== null) { let da = ang - lastA; if (da > Math.PI) da -= Math.PI * 2; if (da < -Math.PI) da += Math.PI * 2; cam.tTheta += da; }
+    lastA = ang;
     if (pinch) cam.tDist = Math.max(6, Math.min(340, cam.tDist * (pinch / d)));
     if (lastC) panBy(cx - lastC.x, cy - lastC.y);   // two-finger drag pans
     pinch = d; lastC = { x: cx, y: cy }; mark();
   }, { passive: true });
-  canvas.addEventListener('touchend', () => { pinch = 0; lastC = null; });
+  canvas.addEventListener('touchend', () => { pinch = 0; lastC = null; lastA = null; });
 })();
 
 /* ---------- bloom ---------- */
@@ -2263,7 +2267,7 @@ const I18N = {
     foot: 'Data: Energinet Energi Data Service (åbne data) — alle målte tal. Positioner fra OpenStreetMap (© OpenStreetMap-bidragydere, ODbL, forenklet): solcelleparker, vindmøller, elnettet og udlandsforbindelsernes faktiske kabelruter. Kun kablernes højde over havet er tegnet — linjeføringen er den kortlagte. Enkelte ruter er kun delvist kortlagt; hold musen over forbindelsen for forbehold. Landmøller vises når du zoomer ind; på oversigt bæres de af tæthedsfelterne. Tal pr. havmøllepark (≈) er en beregnet, kapacitetsvægtet andel af den målte nationale havvind. Priser omregnet til øre/kWh med fastkurs 7,46 DKK/EUR.',
     lgImp: 'Import til Danmark', lgExp: 'Eksport fra Danmark', lgWind: 'Vindproduktion', lgSol: 'Solproduktion',
     lg400: '400 kV-nettet', lg150: '132/150 kV-nettet',
-    keys: '<b>Træk</b> roter · <b>Højre-træk</b> flyt · <b>Scroll</b> zoom · <b>Mellemrum</b> afspil · <b>K</b> storskærm · <b>R</b> nulstil · <b>L</b> sprog',
+    keys: '<b>Træk</b> flyt · <b>Højre-træk</b> roter · <b>Scroll</b> zoom · <b>Mellemrum</b> afspil · <b>K</b> storskærm · <b>R</b> nulstil · <b>L</b> sprog',
     wOff: 'Havvind', wOn: 'Landvind', sol: 'Sol', cen: 'Centrale værker', dec: 'Decentrale værker',
     exp: 'Eksport til naboer', imp: 'Import fra naboer', bal: 'I balance',
     ren: 'Vind + sol dækker <b>{p} %</b> af produktionen',
@@ -2353,7 +2357,7 @@ const I18N = {
     foot: 'Data: Energinet Energy Data Service (open data) — every measured figure. Positions from OpenStreetMap (© OpenStreetMap contributors, ODbL, simplified): solar parks, wind turbines, the transmission grid and the interconnectors\' actual cable routes. Only the cables\' height above the sea is drawn — the ground track is the surveyed one. A few routes are only partly mapped; hover a link for the caveat. Onshore turbines appear as you zoom in; at overview distance the density footprints carry them. Per-farm figures (≈) are a computed, capacity-weighted share of measured national offshore wind. Prices converted to øre/kWh at the fixed 7.46 DKK/EUR rate.',
     lgImp: 'Import to Denmark', lgExp: 'Export from Denmark', lgWind: 'Wind generation', lgSol: 'Solar generation',
     lg400: '400 kV grid', lg150: '132/150 kV grid',
-    keys: '<b>Drag</b> rotate · <b>Right-drag</b> pan · <b>Scroll</b> zoom · <b>Space</b> play · <b>K</b> big screen · <b>R</b> reset · <b>L</b> language',
+    keys: '<b>Drag</b> pan · <b>Right-drag</b> rotate · <b>Scroll</b> zoom · <b>Space</b> play · <b>K</b> big screen · <b>R</b> reset · <b>L</b> language',
     wOff: 'Offshore wind', wOn: 'Onshore wind', sol: 'Solar', cen: 'Central plants', dec: 'Decentral plants',
     exp: 'Exporting to neighbours', imp: 'Importing from neighbours', bal: 'Balanced',
     ren: 'Wind + solar cover <b>{p}%</b> of generation',
