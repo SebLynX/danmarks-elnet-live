@@ -17,6 +17,26 @@
 <meta property="og:image:height" content="1260">
 <meta property="og:image:alt" content="Kort over Danmark med de faktiske kabelruter til nabolandene, havmølleparker og landmøller, og en overskrift der viser den aktuelle import eller eksport i MW.">
 <meta name="twitter:card" content="summary_large_image">
+<meta property="og:locale:alternate" content="en_GB">
+<meta name="author" content="Sebastian Bertelsen Wolf">
+<meta name="robots" content="max-image-preview:large">
+<link rel="canonical" href="https://el.gridkort.dk/">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+{"@type":"WebApplication","@id":"https://el.gridkort.dk/#app","name":"Danmarks Elnet","alternateName":"Denmark's Power Grid","url":"https://el.gridkort.dk/","image":"https://el.gridkort.dk/preview.png",
+"description":"Interaktivt 3D-kort over det danske elsystem lige nu: samlet produktion, havvind, landvind, sol, CO₂-intensitet, udveksling på hver af de ni forbindelser (otte til nabolandene og Storebælt) og day-ahead-priser i DK1 og DK2, med 30 dages historik i timeopløsning. Uafhængigt kort bygget på åbne data fra Energinet Energi Data Service; ikke et officielt Energinet-værktøj.",
+"applicationCategory":"ReferenceApplication","operatingSystem":"Any (runs in a web browser)","browserRequirements":"Requires WebGL","inLanguage":["da","en"],
+"isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"DKK"},
+"spatialCoverage":{"@type":"Place","name":"Danmark"},
+"isBasedOn":[{"@type":"Dataset","name":"Power System Right Now","creator":{"@type":"Organization","name":"Energinet"},"url":"https://www.energidataservice.dk/tso-electricity/PowerSystemRightNow"},
+{"@type":"Dataset","name":"Day-Ahead Prices","creator":{"@type":"Organization","name":"Energinet"},"url":"https://www.energidataservice.dk/tso-electricity/DayAheadPrices"},
+{"@type":"Dataset","name":"OpenStreetMap","url":"https://www.openstreetmap.org/copyright","license":"https://opendatacommons.org/licenses/odbl/"}],
+"author":{"@id":"https://gridkort.dk/#author"},"isPartOf":{"@id":"https://gridkort.dk/#website"}},
+{"@type":"Person","@id":"https://gridkort.dk/#author","name":"Sebastian Bertelsen Wolf","url":"https://www.linkedin.com/in/sebastian-bertelsen-wolf/"},
+{"@type":"WebSite","@id":"https://gridkort.dk/#website","url":"https://gridkort.dk/","name":"gridkort.dk"},
+{"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"gridkort.dk","item":"https://gridkort.dk/"},{"@type":"ListItem","position":2,"name":"Danmarks Elnet","item":"https://el.gridkort.dk/"}]}
+]}
+</script>
 
 <style>
 /* ------------------------------------------------------------------
@@ -587,7 +607,7 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
 <div id="hud">
   <div id="top">
     <div id="brand">
-      <div class="t"><span data-i18n="titleBase">DANMARKS ELNET</span> <span class="mode" id="modeTag">· i realtid</span></div>
+      <h1 class="t"><span data-i18n="titleBase">DANMARKS ELNET</span> <span class="mode" id="modeTag">· i realtid</span></h1>
       <div class="s" id="subTag">Energinet Energi Data Service · opdateres hvert minut</div>
     </div>
     <div id="status">
