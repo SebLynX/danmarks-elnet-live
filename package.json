@@ -1,0 +1,15 @@
+{
+  "name": "danmarks-elnet-live",
+  "private": true,
+  "description": "Checks for el.gridkort.dk. No \"type\": \"module\" here: poll.js, fetch.js and compact.js use require() and the data job runs them with node.",
+  "scripts": {
+    "check": "bash .claude/hooks/check.sh",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1",
+    "html-validate": "11.16.1",
+    "http-server": "14.1.1",
+    "prettier": "3.9.7"
+  }
+}

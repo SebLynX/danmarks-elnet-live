@@ -5,3 +5,13 @@ node_modules/
 # med alt hvad der ligger der, ogsaa filer git ikke sporer.
 power_raw.json
 history.json
+
+# Tjek (Playwright, pre-commit) og lokale hemmeligheder
+test-results/
+playwright-report/
+_site/
+.env
+.env.*
+.venv/
+__pycache__/
+.claude/settings.local.json

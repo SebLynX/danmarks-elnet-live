@@ -1,0 +1,16 @@
+# Build output from the private source repo. Formatting it here would change the live page.
+index.html
+# Written by the data job (.github/workflows/update-data.yml).
+data.json
+hist.json
+# Lockfile is npm's.
+package-lock.json
+# Existed before the checks. Formatting them is a separate change, not part of the guardrails.
+404.html
+poll.js
+fetch.js
+compact.js
+worker/
+README.md
+SERVER-SETUP.md
+.github/workflows/update-data.yml

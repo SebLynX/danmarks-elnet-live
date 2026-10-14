@@ -1,0 +1,43 @@
+# Format, lint and secret scan at commit (fast); smoke test at push. CI runs the same.
+# Prettier skips the files listed in .prettierignore: build output, data written by the
+# data job, and files that existed before these checks.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-json
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+      # The hook above scans only staged changes, so in CI (nothing staged) it scans nothing.
+      # CI runs this one: every commit in the history.
+      - id: gitleaks
+        alias: gitleaks-history
+        name: gitleaks (whole history)
+        entry: gitleaks git --redact --verbose
+        stages: [manual]
+
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier
+        entry: npx --no-install prettier --write --ignore-unknown
+        language: system
+        types: [text]
+      - id: html-validate
+        name: html-validate
+        entry: npx --no-install html-validate
+        language: system
+        files: \.html$
+      - id: smoke
+        name: playwright smoke test
+        entry: npx --no-install playwright test
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
