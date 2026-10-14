@@ -7,10 +7,10 @@
 
 ## Hvad kortet viser
 
-- Målt, direkte fra Energinet Energi Data Service: samlet produktion, havvind, landvind, sol, CO₂-udledning pr. kWh, udvekslingen på hver af de ni udlandsforbindelser og day-ahead-priser for budområderne DK1 (Vest) og DK2 (Øst).
+- Målt, direkte fra Energinet Energi Data Service: samlet produktion, havvind, landvind, sol, CO₂-udledning pr. kWh, udvekslingen på hver af de ni forbindelser (otte til nabolandene og Storebælt mellem DK1 og DK2) og day-ahead-priser for budområderne DK1 (Vest) og DK2 (Øst).
 - Priserne er spotpriser på engrosmarkedet, uden afgifter, moms og transport.
 - En tidslinje med de sidste 30 dages historik i timeopløsning, hentet komplet fra Energinet.
-- Kortlagt fra OpenStreetMap: 6.271 vindmøller, 29 havmølleparker, 117 solcelleparker, transmissionsnettet på 400 og 132/150 kV og kabelruterne for de ni udlandsforbindelser. Nettet er forenklet med ca. ±500 m.
+- Kortlagt fra OpenStreetMap: 6.271 vindmøller, 29 havmølleparker, 117 solcelleparker, transmissionsnettet på 400 og 132/150 kV og kabelruterne for de ni forbindelser. Nettet er forenklet med ca. ±500 m.
 
 ## Hvor friske tallene er
 
@@ -19,7 +19,7 @@ Kortet henter først sine tal gennem en lille proxy, der spørger Energinet og h
 ## Hvad der er beregnet, og hvad kortet ikke påstår
 
 - MW pr. havmøllepark er en kapacitetsvægtet andel af den målte nationale havvind. Der findes ingen offentlige realtidsmålinger pr. park, så tallet er et estimat og mærket med ≈.
-- Kapaciteten på 44 af de 117 solcelleparker er anslået ud fra det kortlagte areal, og radius på 20 af de 29 havmølleparker er anslået ud fra kapaciteten.
+- Kapaciteten på 48 af de 117 solcelleparker er anslået ud fra det kortlagte areal, og radius på 20 af de 29 havmølleparker er anslået ud fra kapaciteten.
 - Møllernes rotation og kablernes højde over havet er tegnet, ikke data.
 - Belastningen på de enkelte indenlandske ledninger vises ikke. De data er ikke offentlige, så nettet er statisk.
 
@@ -31,4 +31,4 @@ Kortet henter først sine tal gennem en lille proxy, der spørger Energinet og h
 
 ## English
 
-Danmarks Elnet (Denmark's Power Grid) is an interactive 3D map of the Danish power system right now: total generation, offshore and onshore wind, solar, CO₂ intensity, flows on each of the nine interconnectors and day-ahead prices in DK1 and DK2, with 30 days of hourly history. Figures come from Energinet's open Energi Data Service and are typically 1-2 minutes old; if they are more than 3 hours old the map shows OFFLINE. Per-wind-farm output is an estimate, marked ≈. An independent hobby project by Sebastian Bertelsen Wolf, not an official Energinet tool.
+Danmarks Elnet (Denmark's Power Grid) is an interactive 3D map of the Danish power system right now: total generation, offshore and onshore wind, solar, CO₂ intensity, flows on each of the nine links (eight cross-border plus the Great Belt link between DK1 and DK2) and day-ahead prices in DK1 and DK2, with 30 days of hourly history. Figures come from Energinet's open Energi Data Service and are typically 1-2 minutes old; if they are more than 3 hours old the map shows OFFLINE. Per-wind-farm output is an estimate, marked ≈. An independent hobby project by Sebastian Bertelsen Wolf, not an official Energinet tool.
