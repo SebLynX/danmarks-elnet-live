@@ -233,6 +233,7 @@ ikke offentlige, så laget er statisk topologi.
 | `README.md` | Denne fil |
 | `robots.txt`, `sitemap.xml`, `llms.txt` | Til søgemaskiner og AI-søgemaskiner. `llms.txt` beskriver kortet, kilderne og hvad der er beregnet. Ret den, hvis kortet ændrer sig |
 | `404.html` | Siden for en forkert adresse på el.gridkort.dk |
+| `tv2/index.html` | Sender `el.gridkort.dk/tv2` videre til TV 2-indslaget. Se [TV 2-indslag i kiosk-tilstand](#tv-2-indslag-i-kiosk-tilstand) |
 
 Kortet virker **uden** `hist.json` — så bruger det den historik der er bygget ind i
 `index.html`. Den er ældre, men korrekt, og det er den der gør at en enkelt downloadet
@@ -241,6 +242,23 @@ HTML-fil stadig virker uden net. Den nyeste af de to vinder altid, så en gammel
 
 Fordi workflowet committer `data.json`, får repoet en lille commit hver gang tallene
 ændrer sig. Det er meningen, og det fylder næsten ingenting.
+
+---
+
+## TV 2-indslag i kiosk-tilstand
+
+Kiosk-tilstanden kan vise en QR-kode til et TV 2-indslag. Koden kommer cirka hvert
+75. sekund og står i 15 sekunder. Uden for kiosk står indslaget som et link i kortet
+med signaturforklaringen. Funktionen er slået fra, så længe der ikke står en titel.
+
+Sådan slår du den til:
+
+1. Skriv indslagets adresse i `tv2/index.html`: `const CLIP = 'https://nyheder.tv2.dk/...';`
+2. Skriv titlen i `index.html`: `const CLIP = { title: 'Titlen på indslaget', ... };`
+
+QR-koden peger altid på `https://el.gridkort.dk/tv2`, og den side sender videre til
+indslaget. Skifter du indslaget, retter du kun de to linjer. QR-koden er den samme.
+Vil du slå funktionen fra igen, så tøm begge linjer. Så sender `/tv2` folk til kortet.
 
 ---
 
