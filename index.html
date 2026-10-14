@@ -275,6 +275,21 @@ body.kiosk #kioskCap{display:block}
 #kioskCap .kx{font-size:var(--fs-xs);color:var(--dimmer);margin-top:16px;letter-spacing:.16em;
   text-transform:uppercase;transition:opacity .8s}
 body.hintfade #kioskCap .kx{opacity:0}
+/* TV 2 beat: the QR sits left of a smaller caption instead of above it, so the
+   beat is no taller than a fact caption. 8vw is ~10 cm on a 55" screen. The
+   box may pass the fact captions' 1000px cap - on a 4K screen that cap wrapped
+   the title onto four lines. left:50% still holds it to half the screen. */
+#kioskCap .kq{display:none;width:clamp(120px,8vw,300px);height:auto;border-radius:6px;
+  box-shadow:0 6px 28px -10px rgba(0,0,0,.45)}
+body.kiosk #kioskCap.clip{display:grid;grid-template-columns:auto auto;column-gap:clamp(18px,1.6vw,44px);
+  align-items:center;text-align:left;max-width:max(64vw,min(88vw,1000px))}
+#kioskCap.clip .kq{display:block;grid-row:1 / span 4}
+#kioskCap.clip .kk,#kioskCap.clip .kh,#kioskCap.clip .ks,#kioskCap.clip .kx{grid-column:2}
+#kioskCap.clip .kk{justify-content:flex-start}
+#kioskCap.clip .kh{font-size:clamp(24px,2.9vw,120px)}
+#kioskCap.clip .ks{font-size:clamp(14px,1.5vw,46px)}
+#kioskCap .kk.clip{color:var(--ink)}
+#kioskCap .kk.clip .kdot{background:var(--teal)}
 #kioskStamp{position:fixed;right:22px;bottom:15px;display:none;align-items:center;gap:9px;z-index:6;
   font-size:var(--fs-sm);color:var(--dim);letter-spacing:.03em}
 body.kiosk #kioskStamp{display:flex}
@@ -334,6 +349,10 @@ body.kiosk.story::before,body.kiosk.story::after{transform:translateY(0)}
 #foot .sw.exp{background:var(--exp-gfx);box-shadow:var(--sw-glow) var(--exp-gfx)}
 #foot .sw.wnd{background:var(--wind-gfx);box-shadow:var(--sw-glow) var(--wind-gfx)}
 #foot .sw.sol{background:var(--solar-gfx);box-shadow:var(--sw-glow) var(--solar-gfx)}
+#clipLink{margin-top:8px;color:var(--ink);text-decoration:none}
+#clipLink[hidden]{display:none}
+#clipLink:hover span:last-child{text-decoration:underline}
+#clipLink .pl{width:16px;flex:none;text-align:center;font-size:10px;color:var(--teal)}
 /* interaction hints are onboarding — they must pass WCAG AA (verified 8.8:1) */
 #foot .keys{margin-top:9px;padding-top:8px;border-top:1px solid var(--hairline);
   font-size:var(--fs-xs);color:var(--dim);line-height:1.75;padding-right:22px}
@@ -623,7 +642,7 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
   <div id="err"></div>
   <div id="mini" class="card mono"></div>
   <div id="wowNote"></div>
-  <div id="kioskCap"><div class="kk"><span class="kdot"></span><span class="kt"></span></div><div class="kh"></div><div class="ks"></div><div class="kx" data-i18n="kHint">Tryk K for at afslutte</div></div>
+  <div id="kioskCap"><svg class="kq" viewBox="0 0 33 33" shape-rendering="crispEdges" aria-hidden="true"><rect width="33" height="33" fill="#fff"/><path stroke="#1A1A1A"/></svg><div class="kk"><span class="kdot"></span><span class="kt"></span></div><div class="kh"></div><div class="ks"></div><div class="kx" data-i18n="kHint">Tryk K for at afslutte</div></div>
   <div id="kioskStamp"><span class="dot"></span><span class="mono" id="kClock">—</span><span data-i18n="kSrc">Energinet Energi Data Service · åbne data</span></div>
 
   <!-- The panels. On a desktop #sheet is display:contents and changes nothing;
@@ -693,6 +712,7 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
       <span class="sw g400"></span><span data-i18n="lg400">400 kV-nettet</span></div>
     <div class="lgd tgl" id="lg150" role="button" tabindex="0" aria-pressed="true">
       <span class="sw g150"></span><span data-i18n="lg150">132/150 kV-nettet</span></div>
+    <a class="lgd" id="clipLink" target="_blank" rel="noopener" hidden><span class="pl" aria-hidden="true">▶</span><span></span></a>
     <div class="keys" data-i18n="keys"></div>
     <div class="priv" data-i18n="privNote">Uafhængigt kort bygget på Energinets åbne data. Ikke et officielt Energinet-værktøj.</div>
     <button id="infoBtn" type="button" aria-expanded="false">i</button>
@@ -2268,6 +2288,17 @@ const $$ = s => [...document.querySelectorAll(s)];
 let LANG = 'da';
 const QP = new URLSearchParams(location.search);
 if (QP.get('lang') === 'en') LANG = 'en';
+/* ---------------- TV 2 clip ----------------
+   A TV 2 news clip the kiosk points to with a QR code, and the legend card
+   links to outside kiosk. Off while `title` is empty. Both go to `url`, a
+   forwarding page in this repo (tv2/index.html) that holds the clip's real
+   address: swapping the clip is a change there, and a QR code someone has
+   photographed never goes stale. CLIP_QR is `url` pre-encoded - QR version 2,
+   level M, 25 modules plus the 4-module quiet zone of the 33-unit viewBox,
+   one stroked row run per segment. Regenerate it only if `url` changes. */
+const CLIP = { title: '', url: 'https://el.gridkort.dk/tv2' };
+const CLIP_QR = 'M4 4.5h7M12 4.5h2M16 4.5h2M22 4.5h7M4 5.5h1M10 5.5h1M12 5.5h2M15 5.5h1M18 5.5h1M20 5.5h1M22 5.5h1M28 5.5h1M4 6.5h1M6 6.5h3M10 6.5h1M12 6.5h1M15 6.5h3M22 6.5h1M24 6.5h3M28 6.5h1M4 7.5h1M6 7.5h3M10 7.5h1M13 7.5h3M17 7.5h1M19 7.5h2M22 7.5h1M24 7.5h3M28 7.5h1M4 8.5h1M6 8.5h3M10 8.5h1M12 8.5h2M16 8.5h1M20 8.5h1M22 8.5h1M24 8.5h3M28 8.5h1M4 9.5h1M10 9.5h1M13 9.5h3M18 9.5h1M22 9.5h1M28 9.5h1M4 10.5h7M12 10.5h1M14 10.5h1M16 10.5h1M18 10.5h1M20 10.5h1M22 10.5h7M13 11.5h1M17 11.5h3M4 12.5h1M7 12.5h6M14 12.5h2M20 12.5h2M24 12.5h1M26 12.5h3M4 13.5h4M13 13.5h2M16 13.5h4M23 13.5h5M4 14.5h1M6 14.5h1M8 14.5h1M10 14.5h2M13 14.5h1M17 14.5h1M19 14.5h1M23 14.5h3M28 14.5h1M6 15.5h1M8 15.5h1M11 15.5h1M14 15.5h3M21 15.5h3M25 15.5h4M5 16.5h3M9 16.5h3M15 16.5h2M19 16.5h5M28 16.5h1M4 17.5h2M7 17.5h1M12 17.5h1M16 17.5h5M24 17.5h1M27 17.5h1M4 18.5h3M9 18.5h2M14 18.5h1M16 18.5h4M21 18.5h1M24 18.5h5M4 19.5h1M6 19.5h1M9 19.5h1M11 19.5h1M15 19.5h2M18 19.5h1M20 19.5h1M23 19.5h1M25 19.5h2M28 19.5h1M4 20.5h1M8 20.5h3M12 20.5h4M17 20.5h1M20 20.5h5M26 20.5h2M12 21.5h1M14 21.5h1M16 21.5h2M20 21.5h1M24 21.5h1M26 21.5h2M4 22.5h7M12 22.5h2M15 22.5h2M18 22.5h1M20 22.5h1M22 22.5h1M24 22.5h1M28 22.5h1M4 23.5h1M10 23.5h1M12 23.5h4M17 23.5h1M19 23.5h2M24 23.5h1M4 24.5h1M6 24.5h3M10 24.5h1M12 24.5h3M19 24.5h6M4 25.5h1M6 25.5h3M10 25.5h1M12 25.5h1M14 25.5h2M17 25.5h2M21 25.5h2M27 25.5h2M4 26.5h1M6 26.5h3M10 26.5h1M15 26.5h3M19 26.5h1M21 26.5h1M24 26.5h5M4 27.5h1M10 27.5h1M15 27.5h1M18 27.5h2M22 27.5h3M26 27.5h3M4 28.5h7M12 28.5h4M20 28.5h1M25 28.5h1M28 28.5h1';
+$('#kioskCap .kq path').setAttribute('d', CLIP_QR);
 /* a phone or touchscreen with no mouse: there is no K or Esc to leave kiosk */
 const TOUCH_ONLY = matchMedia('(hover: none) and (pointer: coarse)').matches;
 const I18N = {
@@ -2339,6 +2370,8 @@ const I18N = {
     kHint: 'Tryk K for at afslutte storskærmsvisning',
     kHintT: 'Tryk på KIOSK øverst for at afslutte',
     kLiveTag: 'LIGE NU', kLastTag: 'SENESTE MÅLING', kHistTag: 'HISTORIK',
+    kClipTag: 'TV 2 · INDSLAG', kClipSub: 'Scan koden med telefonens kamera for at se indslaget',
+    clipLink: 'TV 2-indslag: {t}',
     kRen: ['{v} % vind og sol', 'Vind og sol dækker {v} % af Danmarks elproduktion'],
     kExp: ['{v} MW eksport', 'Danmark sender strøm til nabolandene'],
     kImp: ['{v} MW import', 'Danmark henter strøm fra nabolandene'],
@@ -2419,6 +2452,8 @@ const I18N = {
     kHint: 'Press K to leave big-screen mode',
     kHintT: 'Tap KIOSK at the top to leave',
     kLiveTag: 'LIVE NOW', kLastTag: 'LATEST DATA', kHistTag: 'HISTORY',
+    kClipTag: 'TV 2 · NEWS CLIP', kClipSub: 'Scan the code with your phone camera to watch the clip',
+    clipLink: 'TV 2 clip: {t}',
     kRen: ['{v}% green power', "Wind and solar cover {v}% of Denmark's generation"],
     kExp: ['{v} MW export', 'Denmark is sending power to its neighbours'],
     kImp: ['{v} MW import', 'Denmark is drawing power from its neighbours'],
@@ -2538,6 +2573,9 @@ function applyLang() {
   });
   if (typeof relabel === 'function') relabel();   // map labels are not data-i18n driven
   if (TOUCH_ONLY) $('#kioskCap .kx').textContent = T('kHintT');
+  const cl = $('#clipLink');
+  cl.hidden = !CLIP.title;
+  if (CLIP.title) { cl.href = CLIP.url; cl.lastElementChild.textContent = T('clipLink').replace('{t}', CLIP.title); }
   $('#kioskBtn').title = T('kioskTip');
   syncSheet();
   document.title = LANG === 'da' ? 'Danmarks Elnet · Live' : "Denmark's Power Grid · Live";
@@ -3122,9 +3160,13 @@ addEventListener('keydown', e => {
 /* ---------------- kiosk / big-screen story mode ----------------
    Self-running: rotates through live fact captions, then jumps to one of the
    notable hours (replay) with a one-line story, and returns to live. */
-const kiosk = { on: false, phase: 'live', step: 0, sinceStory: 0, until: 0, evIdx: 0, pausedUntil: 0, glide: null, playlist: [], hintT: 0, clockT: 0 };
+const kiosk = { on: false, phase: 'live', step: 0, sinceStory: 0, slot: 0, until: 0, evIdx: 0, pausedUntil: 0, glide: null, playlist: [], hintT: 0, clockT: 0 };
 const KIOSK_LIVE_MS = 6700, KIOSK_STORY_MS = 9300, KIOSK_LIVE_STEPS = 5;
 const KIOSK_LIVE_PER_STORY = 2;   // a story beat lands within any ~25s of viewing
+/* With a TV 2 clip set, every third story slot shows its QR code instead -
+   about 15 s in every 75, first at ~35 s. Held longer than a story beat:
+   finding the camera app takes a moment. */
+const KIOSK_CLIP_EVERY = 3, KIOSK_CLIP_MS = 15000;
 /* story order for the kiosk tour only — most dramatic first, so a short
    screen recording always catches a strong beat. #chips order is untouched. */
 const KDRAMA = ['Negative price', 'Price spike', 'Peak wind', 'Max export', 'Lowest CO₂', 'Peak solar', 'Max import', 'Highest CO₂'];
@@ -3141,9 +3183,10 @@ function kioskCaption(kh, ks, mode) {
   const el = $('#kioskCap');
   el.classList.remove('show');
   setTimeout(() => {
-    const tag = mode === 'story' ? 'kHistTag' : (liveOK ? 'kLiveTag' : 'kLastTag');
+    const tag = mode === 'story' ? 'kHistTag' : mode === 'clip' ? 'kClipTag' : (liveOK ? 'kLiveTag' : 'kLastTag');
     const kk = el.querySelector('.kk');
-    kk.className = 'kk ' + (mode === 'story' ? 'story' : liveOK ? 'live' : 'last');
+    kk.className = 'kk ' + (mode === 'story' || mode === 'clip' ? mode : liveOK ? 'live' : 'last');
+    el.classList.toggle('clip', mode === 'clip');   // swapped while faded out, so the layout change is never seen
     kk.querySelector('.kt').textContent = T(tag);
     el.querySelector('.kh').innerHTML = kh;
     el.querySelector('.ks').innerHTML = ks;
@@ -3281,7 +3324,7 @@ function setKiosk(on) {
     S.mode = 'live'; S.playing = false;
     $('#play').textContent = '▶';
     cam.ease = 0.5;   // twice-as-slow camera moves: stately, not jumpy
-    kiosk.phase = 'live'; kiosk.step = 0; kiosk.sinceStory = 0;
+    kiosk.phase = 'live'; kiosk.step = 0; kiosk.sinceStory = 0; kiosk.slot = 0;
     /* a beat of stillness so the chrome change lands before the camera moves —
        entering used to fire the first shot on the very next frame */
     kiosk.until = performance.now() + 900;
@@ -3316,7 +3359,15 @@ function kioskTick(now, f) {
     cam.tTarget.lerpVectors(g.a, g.b, p);
   }
   if (now < kiosk.pausedUntil || now < kiosk.until) return;
-  if (kiosk.phase === 'live' && kiosk.sinceStory >= KIOSK_LIVE_PER_STORY && kiosk.playlist.length) {
+  const slotDue = kiosk.phase === 'live' && kiosk.sinceStory >= KIOSK_LIVE_PER_STORY;
+  if (slotDue && CLIP.title && (kiosk.slot++ % KIOSK_CLIP_EVERY === 1 || !kiosk.playlist.length)) {
+    const t = CLIP.title.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    kioskCaption(t, T('kClipSub'), 'clip');
+    // the calm whole-country drift: the QR is the subject, not the map
+    kApplyShot(kShotLive(KIOSK_LIVE_STEPS - 1, targetFrame()), now, KIOSK_CLIP_MS);
+    kiosk.phase = 'clip'; kiosk.sinceStory = 0;
+    kiosk.until = now + KIOSK_CLIP_MS;
+  } else if (slotDue && kiosk.playlist.length) {
     const ev = EVENTS[kiosk.playlist[kiosk.evIdx % kiosk.playlist.length]]; kiosk.evIdx++;
     S.mode = 'replay'; S.idx = ev.i; S.playing = false;
     matComposite.uniforms.flash.value = 0.5;
@@ -3332,6 +3383,7 @@ function kioskTick(now, f) {
       kiosk.phase = 'live';
       document.body.classList.remove('story');
     }
+    kiosk.phase = 'live';   // also ends a clip beat
     const stepNow = kiosk.step;
     // captions must use the TARGET frame, not the smoothed display frame —
     // right after a story beat the smoothed frame still holds stale values
