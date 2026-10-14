@@ -5,7 +5,7 @@
 - Check everything (this is "green"): `bash .claude/hooks/check.sh`
 - Setup once: `npm ci && pip install pre-commit && npx playwright install chromium && pre-commit install --hook-type pre-commit --hook-type pre-push`
 - Tests only: `npx playwright test`
-- Run locally: `npx http-server -p 4173 -c-1 .` and open http://localhost:4173/
+- Run locally: `npx http-server -p 8080 -c-1 .` and open http://localhost:8080/ (4173 is the tests' port; a server left there is reused by them)
 
 ## Rules
 

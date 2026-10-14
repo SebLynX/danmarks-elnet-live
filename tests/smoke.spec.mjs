@@ -1,7 +1,7 @@
 // Day-one smoke test for a static site: every .html page in the repo root (and one level down)
 // must load with HTTP < 400, have a title, throw no JavaScript errors, log no console errors
-// caused by the site itself, load all of its own static files, and every internal link must
-// resolve.
+// caused by the site itself, load its own scripts, styles and images, and every internal link
+// must resolve.
 //
 // Data requests (fetch/XHR) that fail are reported but do not fail the test. The map walks a
 // fallback chain on purpose (api.gridkort.dk, data.json, /api/ on the same host, GitHub Pages,
@@ -77,7 +77,8 @@ for (const file of pages) {
     const response = await page.goto(`/${file}`);
     expect(response?.status(), `HTTP status for ${file}`).toBeLessThan(400);
     await expect(page).toHaveTitle(/.+/);
-    await page.waitForLoadState("networkidle").catch(() => {});
+    // Bounded: an external host that hangs must not eat the whole test timeout.
+    await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
 
     const hrefs = await page.$$eval("a[href]", (as) => as.map((a) => a.getAttribute("href")));
     const internal = hrefs.filter(
