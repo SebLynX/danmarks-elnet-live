@@ -231,6 +231,8 @@ ikke offentlige, så laget er statisk topologi.
 | `compact.js` | Laver `fetch.js`-resultatet om til den lille `hist.json` |
 | `.github/workflows/update-data.yml` | Tidsplanen. Kører scripterne og committer filerne |
 | `README.md` | Denne fil |
+| `robots.txt`, `sitemap.xml`, `llms.txt` | Til søgemaskiner og AI-søgemaskiner. `llms.txt` beskriver kortet, kilderne og hvad der er beregnet. Ret den, hvis kortet ændrer sig |
+| `404.html` | Siden for en forkert adresse på el.gridkort.dk |
 
 Kortet virker **uden** `hist.json` — så bruger det den historik der er bygget ind i
 `index.html`. Den er ældre, men korrekt, og det er den der gør at en enkelt downloadet

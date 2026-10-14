@@ -1,0 +1,5 @@
+# el.gridkort.dk - søgemaskiner og AI-søgemaskiner er velkomne.
+User-agent: *
+Allow: /
+
+Sitemap: https://el.gridkort.dk/sitemap.xml
