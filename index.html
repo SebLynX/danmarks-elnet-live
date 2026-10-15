@@ -331,11 +331,20 @@ body.kiosk.story::before,body.kiosk.story::after{transform:translateY(0)}
 .lbl.zone{font-size:var(--fs-lbl-zone);letter-spacing:.24em;color:rgba(0,201,169,.30);font-weight:700}
 .lbl.link{font-size:var(--fs-lbl-sm);letter-spacing:.1em;color:rgba(200,236,230,.68);
   background:rgba(13,20,32,.65);padding:2px 6px;border-radius:5px;border:1px solid rgba(0,160,140,.18)}
+/* updateLabels moves each label with an inline transform from here: translate(point) translate(-50%,-50%).
+   A transform needs no layout and is not a layout shift; left/top was both, every frame the camera moved. */
+#labels .lbl{left:0;top:0}
 
 /* ---------- intro / footer ---------- */
 #intro{position:fixed;inset:0;background:var(--bg);display:grid;place-items:center;z-index:20;
   transition:opacity .9s ease;font-size:var(--fs-base);color:var(--dim);letter-spacing:.2em;text-transform:uppercase}
 #intro.gone{opacity:0;pointer-events:none}
+/* Behind the intro the script fills the panels and the status pills: rows, tiles, links, chips,
+   the clock and the update pill all grow from "—" to their final size, and the phone sheet closes.
+   The intro hides that from the eye but not from CLS, which counts boxes that move whether they are
+   covered or not. So they are laid out but invisible until the intro starts to fade (body.ready);
+   an invisible box that moves is not a layout shift. The title is not hidden: it does not move. */
+body:not(.ready) #status,body:not(.ready) #sheet,body:not(.ready) #mini{visibility:hidden}
 /* near-opaque surface so text contrast is deterministic regardless of the scene */
 #foot{position:absolute;left:20px;bottom:calc(18px + 126px);width:316px;
   background:var(--panel-solid);padding:11px 12px;border-radius:var(--radius-md);
@@ -620,7 +629,7 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
 
 </style>
 </head>
-<body>
+<body class="sheet-min">
 <canvas id="gl"></canvas>
 
 <div id="hud">
@@ -646,7 +655,8 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
   <div id="kioskStamp"><span class="dot"></span><span class="mono" id="kClock">—</span><span data-i18n="kSrc">Energinet Energi Data Service · åbne data</span></div>
 
   <!-- The panels. On a desktop #sheet is display:contents and changes nothing;
-       on a phone or tablet it is a bottom sheet that opens and closes. -->
+       on a phone or tablet it is a bottom sheet that opens and closes. It starts closed:
+       body has class sheet-min in the markup, so the first paint is already the closed sheet. -->
   <div id="sheet">
   <button id="sheetBtn" type="button" aria-expanded="false" aria-controls="sheet">
     <span class="grab" aria-hidden="true"></span>
@@ -3018,8 +3028,7 @@ function updateLabels(f) {
     // ~45 labels a frame: only touch the ones whose value actually moved
     putStyle(d.el, 'opacity', on ? '1' : '0');
     if (!on) return;
-    putStyle(d.el, 'left', x + 'px');
-    putStyle(d.el, 'top', y + 'px');
+    putStyle(d.el, 'transform', `translate(${x}px,${y}px) translate(-50%,-50%)`);   // see #labels .lbl in the CSS
     if (d.key) {
       const v = Math.round(f.x[d.key]);
       // internal link: import/export arrows make no sense — pulses show direction
@@ -3568,6 +3577,7 @@ function loop(now) {
 
   if (!introDone && elapsed > 0.6) {
     introDone = true;
+    document.body.classList.add('ready');   // shows the panels, filled while hidden (see body.ready in the CSS)
     $('#intro').classList.add('gone');
     setTimeout(() => $('#intro').remove(), 1000);
   }
