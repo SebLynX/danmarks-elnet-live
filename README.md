@@ -110,7 +110,8 @@ browseren har lov til at læse.
 
 https://el.gridkort.dk/
 
-Ikke andet. Det virker på telefon, tablet og storskærm.
+Ikke andet. Det virker på telefon, tablet og storskærm. Er „reducer bevægelse“ slået til i styresystemet, klipper
+kameraet i stedet for at flyve, og rotorer, kabelpulser og hav står stille.
 
 ### 2. Hent `index.html` og åbn den fra din egen maskine
 
