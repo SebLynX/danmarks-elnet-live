@@ -138,8 +138,8 @@ Kortet leder efter data i denne rækkefølge:
 | Kilde | Hvornår den bruges |
 |---|---|
 | `api.gridkort.dk` (Cloudflare Worker) | Først, altid. Svarer den med en måling under 8 min, bruges den |
-| `data.json` i samme mappe som siden | Hvis filen findes og målingen er under 3 timer gammel |
 | `/api/` på samme host | Hvis der er en reverse proxy sat op |
+| `data.json` i samme mappe som siden | Hvis filen findes og målingen er under 3 timer gammel |
 | `data.json` på dette repos GitHub Pages | Hvis ingen af delene svarer |
 | Indlejret 30-dages historik | Hvis alt andet fejler — mærket OFFLINE |
 
