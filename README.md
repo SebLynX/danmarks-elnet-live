@@ -198,8 +198,8 @@ Det er vigtigt for mig, at der ikke står tal på skærmen, som ser målte ud ud
 samlet produktion, havvind, landvind, sol, CO₂-udledning pr. kWh, udveksling på hver
 udlandsforbindelse og day-ahead-priser pr. budområde.
 
-**Kortlagt** — positioner fra OpenStreetMap: 6.271 vindmøller, 29 havmølleparker,
-117 solcelleparker, elnettets tracé på 400 og 132/150 kV og de ni forbindelsers
+**Kortlagt** — positioner fra OpenStreetMap: 6.267 vindmøller, 29 havmølleparker,
+121 solcelleparker, elnettets tracé på 400 og 132/150 kV og de ni forbindelsers
 kabelruter (otte til udlandet og Storebælt). Nettet er forenklet ±~500 m.
 
 **Beregnet, og mærket med ≈ på skærmen:**
@@ -207,7 +207,7 @@ kabelruter (otte til udlandet og Storebælt). Nettet er forenklet ±~500 m.
 - MW pr. havmøllepark er en kapacitetsvægtet andel af den målte nationale havvind.
   Der findes ingen offentlige realtidsmålinger pr. park. Tallet er altså et estimat for
   den enkelte park, ikke en måling.
-- Kapaciteten på 48 af de 117 solcelleparker er anslået ud fra det kortlagte areal,
+- Kapaciteten på 52 af de 121 solcelleparker er anslået ud fra det kortlagte areal,
   fordi den ikke er tagget i OpenStreetMap.
 - Radius på 20 af de 29 havmølleparker er anslået ud fra kapaciteten.
 - Tæthedsfelterne for landmøller er regnet ud fra de kortlagte mølleplaceringer.
