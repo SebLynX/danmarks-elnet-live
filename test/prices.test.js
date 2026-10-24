@@ -146,5 +146,16 @@ test('prices.js asks for DayAheadPrices only, never Elspotprices, and the page n
   const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
   const urls = html.match(/const SPOT_URLS = \[([\s\S]*?)\];/)[1];
   assert.ok(urls.includes("'prices.json'"));
-  assert.ok(!/energidataservice|api\.gridkort/.test(urls), 'the strip reads static prices.json only');
+  assert.ok(!/energidataservice/.test(urls), 'the browser reads the Worker and the static file, never Energinet');
+});
+
+test('worker/worker.js carries the same compactPrices() as prices.js', () => {
+  const fn = src => {
+    const m = src.match(/\nfunction compactPrices\([\s\S]*?\n}\n/);
+    assert.ok(m, 'compactPrices not found');
+    return m[0];
+  };
+  const a = fn(fs.readFileSync(path.join(__dirname, '..', 'prices.js'), 'utf8'));
+  const b = fn(fs.readFileSync(path.join(__dirname, '..', 'worker', 'worker.js'), 'utf8'));
+  assert.equal(b, a);
 });

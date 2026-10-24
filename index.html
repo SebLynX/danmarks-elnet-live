@@ -3239,18 +3239,24 @@ new ResizeObserver(measureTimeline).observe($('#bottom'));
    maths and the SVG live in the SPOT block above the main script (pure, so
    test/spot.test.js runs it under Node); this is only the wiring.
 
-   The browser never calls Energinet for this: prices.js in the update
-   pipeline downloads the data and writes prices.json, and the page reads
-   that file - beside the page first, then from the public repo, which sends
-   Access-Control-Allow-Origin: * and so also serves a copy opened from disk.
-   Nothing here may stop the map: a missing, unreadable or stale file ends
-   as the one-line note in the strip with the button disabled, and the next
-   refresh tries again. */
+   The browser never calls Energinet for this. Same ladder as the live
+   frame: the gridkort.dk Worker first (worker/worker.js, /elnet/prices.json,
+   a server that asks Energinet and caches 15 min - tomorrow's prices are
+   here within a quarter of an hour of their publication), then prices.json
+   from the update pipeline beside the page, then the same file in the public
+   repo, which sends Access-Control-Allow-Origin: * and so also serves a copy
+   opened from disk. The Worker being down costs freshness, never the
+   feature. Nothing here may stop the map: no readable, current series from
+   any of them ends as the one-line note in the strip with the button
+   disabled, and the next refresh tries again. */
 const SPOT_URLS = [
+  'https://api.gridkort.dk/elnet/prices.json',
   'prices.json',
   'https://raw.githubusercontent.com/SebLynX/danmarks-elnet-live/main/prices.json'
 ];
-const SPOT_DEADLINE_MS = 4000, SPOT_REFRESH_MS = 30 * 60000;
+/* refetch every 15 min, the Worker's own cache length, so the strip and the
+   cards pick tomorrow's prices up soon after 13:00 */
+const SPOT_DEADLINE_MS = 4000, SPOT_REFRESH_MS = 15 * 60000;
 const spot = { data: null, mark: false, tried: false, fetchedAt: 0, slot: null };
 const ST = k => SPOT.I18N[LANG === 'en' ? 'en' : 'da'][k];
 const spotEl = { box: $('#spot'), title: $('#spotTitle'), head: $('#spotTitle .k'), note: $('#spotTitle .n'), btn: $('#cheapBtn'), src: $('#spotSrc'), strip: $('#spotStrip'), sum: $('#spotSum') };
@@ -3322,8 +3328,7 @@ addEventListener('resize', () => setTimeout(spotRender, 60));
 spotRender();
 spotLoad();
 /* every minute: redraw when the running quarter changes (the "nu" line and
-   the windows move on), refetch every 30 min - tomorrow's prices land around
-   13:00, and the Worker caches for 15 */
+   the windows move on); refetch on SPOT_REFRESH_MS */
 setInterval(() => {
   if (Date.now() - spot.fetchedAt > SPOT_REFRESH_MS) { spotLoad(); return; }
   if (spot.data && SPOT.slotAt(spot.data, Date.now()) !== spot.slot) spotRender();
