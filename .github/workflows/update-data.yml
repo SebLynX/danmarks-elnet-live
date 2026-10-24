@@ -54,7 +54,7 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 25
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -88,6 +88,20 @@ jobs:
             if (!(age < 180)) throw new Error('maalingen er ' + Math.round(age) + ' min gammel - udgives ikke');
             console.log('ok: ' + f.time + ' DK, ' + Math.round(age) + ' min gammel');
           "
+
+      # Bonus oven paa de friske tal, ligesom historikken: DK1- og DK2-priserne
+      # i kvarterer frem til i morgen aften, til "Kommende elpriser" og
+      # "Hvornaar er det billigst?" under tidslinjen. Browseren kalder aldrig
+      # Energinet for dem - den laeser kun prices.json herfra.
+      # Efter kl. 13 dansk tid venter scriptet paa morgendagens priser (de
+      # offentliggoeres 13-14 CET) med op til fire nye forsoeg a to minutter,
+      # og et HTTP 429 besvares med pause foer naeste forsoeg. Fejler det
+      # alligevel, udgives data.json stadig, og kortet viser en linje om at
+      # priserne mangler.
+      - name: Hent kommende priser
+        continue-on-error: true
+        timeout-minutes: 12
+        run: node prices.js "$RUNNER_TEMP/prices.json"
 
       # Alder maales paa hvornaar filen sidst blev AENDRET, ikke paa klokken.
       # Jobbet springer de fleste planlagte tider over, saa en tidsbaseret regel
@@ -176,6 +190,10 @@ jobs:
             if [ -f "$RUNNER_TEMP/hist.json" ]; then
               cp "$RUNNER_TEMP/hist.json" hist.json
               git add hist.json
+            fi
+            if [ -f "$RUNNER_TEMP/prices.json" ]; then
+              cp "$RUNNER_TEMP/prices.json" prices.json
+              git add prices.json
             fi
 
             # stage FOERST og tjek saa indekset: daekker baade "uaendret" og
