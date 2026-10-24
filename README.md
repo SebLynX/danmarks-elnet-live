@@ -111,10 +111,13 @@ rækker forbindelseskortet stadig ikke, beholder det hele rækker og ruller inde
 færre end tre rækker stå, udelades det. Det måles ved hver størrelsesændring, så et højere
 vindue får det hele tilbage.
 
-**Data:** Browseren kalder aldrig Energinet for priserne. `prices.js` henter datasættet
-`DayAheadPrices` (15 minutters opløsning; det erstattede `Elspotprices`, som stoppede
-september 2025 og ikke bruges) i workflowet og skriver `prices.json`, som siden læser —
-først ved siden af siden, så filen i dette repo. Workflowet kører scriptet i hver kørsel
+**Data:** Browseren kalder aldrig Energinet for priserne. Kortet læser dem samme vej som
+de aktuelle tal: først workeren på `api.gridkort.dk/elnet/prices.json`
+(`worker/worker.js`, der spørger Energinet og holder svaret i 15 min — så er morgendagens
+priser med et kvarter efter offentliggørelsen), så `prices.json` ved siden af siden, så
+filen i dette repo. `prices.js` henter samme datasæt `DayAheadPrices` (15 minutters
+opløsning; det erstattede `Elspotprices`, som stoppede september 2025 og ikke bruges) i
+workflowet og skriver `prices.json` som reserven. Workflowet kører scriptet i hver kørsel
 som en bonus ligesom historikken: fejler kaldet, udgives `data.json` stadig. Lander
 kørslen efter kl. 13 dansk tid, og er morgendagens priser ikke ude endnu, venter scriptet
 og prøver igen op til fire gange med to minutters mellemrum; et HTTP 429 besvares med
@@ -125,14 +128,16 @@ dansk tid pr. kvarter, så skiftet til vintertid (25-10-2026 har 25 timer) ikke
 forskyder noget.
 
 **Priskortene DK1 Vest og DK2 Øst** viser samme tal: det igangværende kvarter fra
-`prices.json`, `DayAheadPriceDKK` delt med 1000, med kvarteret skrevet under tallet. Så
+samme kilde som striben (workeren, ellers `prices.json`), `DayAheadPriceDKK` delt med
+1000, med kvarteret skrevet under tallet. Så
 står der det samme kr./kWh i kortet og i striben for samme kvarter. Mangler
 `prices.json` — eller under afspilning af historikken, som kun findes i €/MWh — falder
 kortene tilbage på €/MWh omregnet med fastkurs 7,46, og linjen under tallet siger
 »omregnet 7,46«. Mærkatet er det samme overalt: *spotpris, før nettarif, afgifter og moms*.
 
 **Fallback-tilstanden kan fremkaldes** med `?udenpriser` i adressen
-(`https://el.gridkort.dk/?udenpriser`): kortet lader som om `prices.json` ikke findes, så
+(`https://el.gridkort.dk/?udenpriser`): kortet lader som om hverken workeren eller
+`prices.json` svarer, så
 striben viser sin ene linje, knappen er slået fra, og priskortene bruger omregningen.
 Samme tilstand opstår af sig selv, hvis filen mangler, ikke kan læses eller slutter i
 fortiden.

@@ -374,10 +374,13 @@ test('one label everywhere: the DK1/DK2 cards carry the same wording as the stri
   assert.ok(!html.includes('spotpris (engros)') && !html.includes('wholesale spot price'));
 });
 
-test('the browser never calls api.energidataservice.dk: the cards read the running quarter from prices.json', () => {
+test('the browser never calls api.energidataservice.dk: strip and cards read the Worker first, then prices.json', () => {
   assert.ok(!html.includes('pollFromApi'));
   assert.ok(!/fetch\(API\b/.test(html));
   assert.ok(!html.includes('api.energidataservice.dk/dataset'));
+  const urls = html.match(/const SPOT_URLS = \[([\s\S]*?)\];/)[1].match(/'[^']+'/g).map(u => u.slice(1, -1));
+  assert.deepEqual(urls, ['https://api.gridkort.dk/elnet/prices.json', 'prices.json', 'https://raw.githubusercontent.com/SebLynX/danmarks-elnet-live/main/prices.json']);
+  assert.ok(html.includes('SPOT_REFRESH_MS = 15 * 60000'));
   assert.ok(html.includes('function spotNow(area)'));
   assert.ok(html.includes("S.mode === 'live' ? spotNow(t.a) : null"));
   assert.ok(html.includes("pConv: 'omregnet 7,46'"));          // the fallback says it converted
