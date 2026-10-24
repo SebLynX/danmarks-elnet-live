@@ -388,7 +388,8 @@ test('short screens fold or drop a card rather than cutting one mid-row', () => 
   assert.ok(html.includes("const FOLDS = ['fold-keys', 'fold-lgd', 'fold-prod', 'fold-prod2'];") && html.includes("B.add('drop-links')"));
   assert.ok(html.includes('body.fold-lgd #foot{display:grid;grid-template-columns:1fr 1fr'));
   assert.ok(html.includes("B.add('tiles2')") && html.includes("B.add('links-cut')") && html.includes('const keepRows = ()'));
-  assert.ok(html.includes('body.tiles2 #right #tiles{grid-template-columns:1fr 1fr}'));
+  assert.ok(html.includes('body.tiles2 #right #tiles{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}'));
+  assert.ok(html.includes('#foot{bottom:auto}'));
   assert.ok(html.includes('body.links-cut #links{flex:none;overflow-y:auto'));
   assert.ok(html.includes('body.fold-prod .row .bar{display:none}'));
   assert.ok(html.includes('body.fold-prod2 #rows,body.fold-prod2 #consLine{display:none}'));

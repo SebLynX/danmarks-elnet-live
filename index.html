@@ -209,7 +209,9 @@ body.fold-prod .row .bar{display:none}
 body.fold-prod #consLine{display:none}
 body.fold-prod2 #rows,body.fold-prod2 #consLine{display:none}
 body.fold-prod2 #renShare{margin-bottom:0;padding-bottom:0;border-bottom:0}
-body.tiles2 #right #tiles{grid-template-columns:1fr 1fr}
+body.tiles2 #right #tiles{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+body.tiles2 #tiles .tile{min-width:0}
+body.tiles2 #tiles #p1V i,body.tiles2 #tiles #p2V i{flex-basis:100%;margin-top:3px}   /* units under the number, as .plong does */
 /* flex:none - a scroll container is otherwise free to shrink inside the column and would measure wrong */
 body.links-cut #links{flex:none;overflow-y:auto;overscroll-behavior:contain;padding-bottom:0}
 body.drop-links #links{display:none}
@@ -537,6 +539,7 @@ body:not(.ready) #status,body:not(.ready) #sheet,body:not(.ready) #mini{visibili
   #left,#right,#bottom,#foot{position:static;width:auto;max-height:none;
     margin:10px 12px;transform:none}
   #bottom,#foot{position:relative}   /* keeps #tlDate and #infoBtn anchored to their cards */
+  #foot{bottom:auto}   /* the desktop anchor's bottom offset would otherwise pull the legend up over the timeline card */
   #left{margin-top:42vh;padding:14px}
   #err{position:static;transform:none;width:fit-content;margin:6px auto 0}
   #wowNote{position:static;transform:none;white-space:normal;text-align:center;width:fit-content;max-width:calc(100% - 24px);margin:6px auto 0}
