@@ -89,6 +89,15 @@ jobs:
             console.log('ok: ' + f.time + ' DK, ' + Math.round(age) + ' min gammel');
           "
 
+      # Bonus oven paa de friske tal, ligesom historikken: DK1- og DK2-priserne
+      # i kvarterer frem til i morgen aften, til "Kommende spotpriser" og
+      # "Hvornaar er det billigst?" under tidslinjen. Fejler kaldet, udgives
+      # data.json stadig, og kortet viser en linje om at priserne mangler.
+      - name: Hent kommende priser
+        continue-on-error: true
+        timeout-minutes: 3
+        run: node prices.js "$RUNNER_TEMP/prices.json"
+
       # Alder maales paa hvornaar filen sidst blev AENDRET, ikke paa klokken.
       # Jobbet springer de fleste planlagte tider over, saa en tidsbaseret regel
       # ("kun i lige timer") ville ramme ved siden af. Filens egen alder retter
@@ -176,6 +185,10 @@ jobs:
             if [ -f "$RUNNER_TEMP/hist.json" ]; then
               cp "$RUNNER_TEMP/hist.json" hist.json
               git add hist.json
+            fi
+            if [ -f "$RUNNER_TEMP/prices.json" ]; then
+              cp "$RUNNER_TEMP/prices.json" prices.json
+              git add prices.json
             fi
 
             # stage FOERST og tjek saa indekset: daekker baade "uaendret" og

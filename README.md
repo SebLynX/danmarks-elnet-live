@@ -10,9 +10,10 @@ day-ahead-priser. Tallene opdaterer sig selv.
 **Se kortet her: https://el.gridkort.dk/** (den gamle adresse seblynx.github.io/danmarks-elnet-live sender automatisk videre)
 
 Kortet er én HTML-fil. Ingen backend, ingen API-nøgle, ingen installation. Ved siden af
-filen ligger to datafiler: `data.json` på ca. 470 bytes med det nyeste måleøjeblik, og
+filen ligger tre datafiler: `data.json` på ca. 470 bytes med det nyeste måleøjeblik,
 `hist.json` på ca. 70 KB med de sidste 30 dages historik i timeopløsning — den der
-tegner tidslinjen under kortet.
+tegner tidslinjen under kortet — og `prices.json` på ca. 1,5 KB med day-ahead-priserne
+i kvarterer frem til i morgen aften (se [Kommende spotpriser](#kommende-spotpriser-og-hvornår-er-det-billigst)).
 
 Dette repo indeholder det færdigbyggede kort. Selve kildekoden ligger i et privat repo.
 
@@ -31,8 +32,8 @@ fire ting:
 
 1. Henter `PowerSystemRightNow` og `DayAheadPrices` fra Energinet Energi Data Service.
 2. Tjekker at alle felter er tal, og at tidsstemplet ser rigtigt ud.
-3. Skriver resultatet til `data.json`.
-4. Committer filen tilbage til repoet, men kun hvis tallene har ændret sig.
+3. Skriver resultatet til `data.json` — og de kommende kvarterspriser til `prices.json`.
+4. Committer filerne tilbage til repoet, men kun hvis tallene har ændret sig.
 
 **Tidslinjen fornyes for sig.** Er `hist.json` mere end 6 timer gammel, henter kørslen
 også de sidste 30 dage forfra hos Energinet og lægger dem ved siden af. Historikken
@@ -72,6 +73,37 @@ workflowet. Se `SERVER-SETUP.md`.
 
 Repoet er offentligt, og GitHub Actions er gratis uden minutgrænse for offentlige repos.
 En kørsel tager ca. et minut.
+
+---
+
+## Kommende spotpriser og »Hvornår er det billigst?«
+
+Under tidslinjen ligger en stribe med day-ahead-priserne for DK1 og DK2 i kvarterer, fra
+den igangværende time og frem til det sidste kvarter Energinet har offentliggjort — normalt
+i morgen kl. 23:45, når dagens auktion er afgjort omkring kl. 13. Knappen **Hvornår er
+det billigst?** markerer de billigste sammenhængende **1, 3 og 8 timer** fra nu i hvert
+prisområde, til elbilen, opvaskemaskinen eller varmepumpen, og skriver tidsrum og
+gennemsnitspris under striben. Et vindue begynder tidligst ved det næste hele kvarter.
+Priserne er spotpriser uden afgifter, moms og transport, omregnet med fastkurs 7,46 som
+resten af kortet. På engelsk (`?lang=en`) hedder knappen *When is it cheapest?*.
+
+I kiosk-tilstand (`?kiosk` eller tasten K) er tidslinjekortet skjult; der viser kiosken i
+stedet den samme stribe med vinduerne markeret som et af sine faste indslag, med den
+billigste 3-timers pris som overskrift.
+
+**Data:** `prices.js` henter datasættet `DayAheadPrices` (15 minutters opløsning; det
+erstattede `Elspotprices`, som stoppede 30-09-2025) og skriver `prices.json`. Workflowet
+kører det i hver kørsel som en bonus ligesom historikken: fejler kaldet, udgives
+`data.json` stadig. Kortet leder efter priserne i samme rækkefølge som de øvrige tal:
+`api.gridkort.dk/elnet/prices.json` (workeren, cache 15 min — kræver at `worker/worker.js`
+er udgivet igen), så `prices.json` ved siden af siden, så filen i dette repo. Får det
+ingen af delene, står der én linje om det i striben, knappen er slået fra, og resten af
+kortet virker som før. Tidsaksen er UTC i filen og omregnes til dansk tid pr. kvarter,
+så skiftet til vintertid (25-10-2026 har 25 timer) ikke forskyder noget.
+
+**Test:** `node --test` kører testene i `test/` — udregningen af de billigste vinduer,
+tegningen af striben (begge sprog, æøå, fallback uden data) og `prices.js`. Node 18+,
+ingen pakker. Testen kører den kodeblok der faktisk ligger i `index.html`.
 
 ---
 
@@ -230,6 +262,9 @@ ikke offentlige, så laget er statisk topologi.
 | `poll.js` | Henter det nyeste måleøjeblik. Node 18+, ingen pakker. Kan køres hvor som helst |
 | `fetch.js` | Henter de 30 dages historik. Samme krav, ingen pakker |
 | `compact.js` | Laver `fetch.js`-resultatet om til den lille `hist.json` |
+| `prices.js` | Henter day-ahead-priserne for DK1 og DK2 i kvarterer og skriver `prices.json` |
+| `prices.json` | Kommende spotpriser, ca. 1,5 KB. Skrives af workflowet. Tegner pris-striben under tidslinjen |
+| `test/` | `node --test`: billigste vinduer, tegning af striben, `prices.js` |
 | `.github/workflows/update-data.yml` | Tidsplanen. Kører scripterne og committer filerne |
 | `README.md` | Denne fil |
 | `robots.txt`, `sitemap.xml`, `llms.txt` | Til søgemaskiner og AI-søgemaskiner. `llms.txt` beskriver kortet, kilderne og hvad der er beregnet. Ret den, hvis kortet ændrer sig |
@@ -282,7 +317,10 @@ Workflowets egne commits tæller som aktivitet, men kig forbi en gang imellem.
 ## Kilder
 
 - **Måledata:** [Energinet Energi Data Service](https://www.energidataservice.dk) — åbne data.
-  Datasæt `PowerSystemRightNow` og `DayAheadPrices`.
+  Datasæt `PowerSystemRightNow` og `DayAheadPrices`. Indeholder data anvendt i henhold til
+  »Conditions for use of Danish public-sector data« fra Energi Data Service-portalen
+  (www.energidataservice.dk) — det er den kildeangivelse, licensen beder om, og den står også
+  i kortets info-panel.
 - **Positioner og netgeometri:** [OpenStreetMap](https://www.openstreetmap.org/copyright),
   licens ODbL. Krediteret i kortets footer.
 - **Landegrænser:** Natural Earth (public domain).
