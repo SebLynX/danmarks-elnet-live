@@ -193,6 +193,26 @@ button{font-family:inherit}
   #tiles.plong #p1V i,#tiles.plong #p2V i{flex-basis:100%;margin-top:3px}
 }
 #links{padding:13px 14px}
+/* ---------- short-screen folds, set by anchorFoot() ----------
+   A card is never cut mid-row. When the column cannot hold it whole, the
+   production card folds its breakdown to a compact list, then to its
+   headline; the connections card is dropped. See anchorFoot() for the rule. */
+body.fold-keys #foot .keys{display:none}
+body.fold-lgd #foot{display:grid;grid-template-columns:1fr 1fr;column-gap:12px;align-content:start}
+body.fold-lgd #foot .keys,body.fold-lgd #foot .priv,body.fold-lgd #foot #infoPan,body.fold-lgd #foot #clipLink{grid-column:1/-1}
+body.fold-prod #left h3{margin-bottom:8px}
+body.fold-prod #renShare{margin:4px 0 8px;padding-bottom:7px}
+body.fold-prod #rows{display:flex;flex-wrap:wrap;gap:3px 12px;margin-top:2px}
+body.fold-prod .row{margin:0}
+body.fold-prod .row .l{gap:5px;margin:0}
+body.fold-prod .row .bar{display:none}
+body.fold-prod #consLine{display:none}
+body.fold-prod2 #rows,body.fold-prod2 #consLine{display:none}
+body.fold-prod2 #renShare{margin-bottom:0;padding-bottom:0;border-bottom:0}
+body.tiles2 #right #tiles{grid-template-columns:1fr 1fr}
+/* flex:none - a scroll container is otherwise free to shrink inside the column and would measure wrong */
+body.links-cut #links{flex:none;overflow-y:auto;overscroll-behavior:contain;padding-bottom:0}
+body.drop-links #links{display:none}
 #links h3{font-size:var(--fs-micro);letter-spacing:.14em;text-transform:uppercase;color:var(--dimmer);
   font-weight:600;margin-bottom:11px;display:flex;justify-content:space-between;
   gap:8px;flex-wrap:wrap;align-items:baseline}
@@ -251,7 +271,7 @@ button{font-family:inherit}
 #spotTitle .n{font-size:var(--fs-micro);color:var(--dimmer)}
 #cheapBtn{grid-area:1/2;justify-self:end}
 #cheapBtn[disabled]{opacity:.45;cursor:default}
-#spotStrip{grid-area:2/1/3/3;height:74px}
+#spotStrip{grid-area:2/1/3/3;height:76px}
 #spotStrip svg{display:block;width:100%;height:100%}
 /* desktop: the summary takes the title's cell while the button is on - one
    line, cut with an ellipsis rather than wrapped, so the card keeps its height */
@@ -293,6 +313,7 @@ body.kiosk #kioskCap.price{width:min(1500px,90vw);max-width:none;background:var(
 #kioskCap .kg{display:none;margin-top:clamp(12px,1.4vw,28px);padding-top:clamp(10px,1.2vw,24px);border-top:1px solid var(--hairline)}
 #kioskCap.price .kg{display:block}
 #kioskCap .kg svg{display:block;width:100%;height:auto}
+#kioskCap .kl{display:block;margin-top:.3em;font-size:.72em;color:var(--dimmer)}
 #kioskCap .kc{display:none;margin-top:clamp(8px,1vw,18px);font-size:clamp(12px,1vw,22px);color:var(--dimmer)}
 #kioskCap.price .kc{display:block}
 
@@ -500,9 +521,8 @@ body:not(.ready) #status,body:not(.ready) #sheet,body:not(.ready) #mini{visibili
   /* the timeline card gives up a little too, so the production card above the legend fits a
      1440x790 browser window (a 13" laptop) whole; shorter windows scroll its last line */
   #spark{height:44px} #bottom{padding:11px 16px 10px}
-  /* the price strip pays for itself here: a lower strip and a tighter chip,
-     so the card is no taller than before it came */
-  #spotStrip{height:62px} #spot{gap:3px 12px;padding-top:5px} #cheapBtn{padding:3px 9px}
+  /* the strip keeps its size and its 11 px text; only its chip and gaps tighten */
+  #spot{gap:3px 12px;padding-top:5px} #cheapBtn{padding:3px 9px}
 }
 /* tablet and phone: the HUD stops floating and becomes a scrollable stack */
 @media (max-width:1024px){
@@ -1025,9 +1045,18 @@ const SPOT = (() => {
   function render(d, opts) {
     const lang = opts.lang === 'en' ? 'en' : 'da', L = I18N[lang];
     const W = Math.max(60, opts.w | 0), H = Math.max(30, opts.h | 0), sc = opts.scale || 1;
-    const fs = Math.round(10 * sc * 10) / 10, r = v => Math.round(v * 100) / 100;
+    /* 11 px of text at scale 1 - row names, tabs and the axis - and never
+       less: the lane and the axis row are sized from the font, the bars get
+       what is left */
+    const fs = Math.round(11 * sc * 10) / 10, r = v => Math.round(v * 100) / 100;
+    const textW = (t, f) => t.length * (f || fs) * 0.6;
     const head = `<svg class="spotsvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(L.aria)}">`;
-    const note = txt => head + `<text class="none" x="${fs}" y="${r(H / 2)}" dominant-baseline="middle" font-size="${r(fs * 1.1)}">${esc(txt)}</text></svg>`;
+    const note = txt => {
+      // two lines when one would run off the right edge (a phone): split at the dash
+      const parts = textW(txt) > W - 2 * fs && txt.includes(' — ') ? txt.split(' — ').map((p, i) => (i ? '— ' : '') + p) : [txt];
+      const lh = fs * 1.45, y0 = H / 2 - (parts.length - 1) * lh / 2;
+      return head + parts.map((p, i) => `<text class="none" x="${fs}" y="${r(y0 + i * lh)}" dominant-baseline="middle" font-size="${fs}">${esc(p)}</text>`).join('') + '</svg>';
+    };
     if (!d || !looksSane(d)) return note(L.none);
     const now = opts.now, step = stepMs(d), t0 = t0ms(d), perHour = 60 / d.step;
     const cur = slotAt(d, now), from = firstFuture(d, now);
@@ -1038,17 +1067,17 @@ const SPOT = (() => {
     const i0 = Math.max(0, hour0 - 2 * perHour);
     const n = d.n - i0;
     const pad = Math.round(2 * sc), rightPad = Math.max(0, opts.rightPad | 0);
-    const axisH = Math.round(15 * sc), gap = Math.round(4 * sc);
+    const axisH = Math.round(fs + 5), gap = Math.round(4 * sc);
     const rowH = Math.floor((H - axisH - gap) / 2);
-    const laneH = Math.min(Math.round(10 * sc), Math.floor(rowH * 0.42)), barH = rowH - laneH;
-    const fsLane = Math.min(fs, laneH - 1);
+    const laneH = Math.round(fs + 3), barH = Math.max(3, rowH - laneH);
+    const fsLane = fs;
     const sw = (W - pad) / n, bw = Math.max(0.8, sw - Math.min(1, sw * 0.18));
     const X = i => pad + (i - i0) * sw;
     const vals = [];
     AREAS.forEach(a => { for (let i = i0; i < d.n; i++) if (d.p[a][i] !== null) vals.push(d.p[a][i]); });
     const max = Math.max(1, ...vals), min = Math.min(0, ...vals);
     const Y = (top, v) => top + laneH + barH - (v - min) / (max - min) * barH;
-    const axisY = r(H - axisH + fs + 1), textW = (t, f) => t.length * (f || fs) * 0.6;
+    const axisY = r(H - axisH + fs + 1);
     /* axis labels never overlap: the credit corner, "nu" and the midnight
        labels are placed first, hour ticks only where they fit between them */
     const taken = [];
@@ -2661,7 +2690,7 @@ const I18N = {
     kSrc: 'Energinet Energi Data Service · åbne data',
     kPriceTag: 'KOMMENDE PRISER · {area} · BILLIGSTE 3 TIMER FRA NU', kWest: 'VEST (DK1)', kEast: 'ØST (DK2)',
     kWestL: 'Vest (DK1)', kEastL: 'Øst (DK2)',
-    kPrice: ['{v} kr./kWh', '{w} · {other}: {e}, {ev} kr./kWh · spotpris, før nettarif, afgifter og moms'],
+    kPrice: ['{v} kr./kWh', '{w} · {other}: {e}, {ev} kr./kWh'],
     kEv: {
       'Peak wind': ['{v} MW vind', '{date} — den kraftigste vindproduktion i de sidste 30 dage'],
       'Peak solar': ['{v} MW sol', '{date} — solens største bidrag i vinduet'],
@@ -2746,7 +2775,7 @@ const I18N = {
     kSrc: 'Energinet Energy Data Service · open data',
     kPriceTag: 'UPCOMING PRICES · {area} · CHEAPEST 3 HOURS AHEAD', kWest: 'WEST (DK1)', kEast: 'EAST (DK2)',
     kWestL: 'West (DK1)', kEastL: 'East (DK2)',
-    kPrice: ['{v} DKK/kWh', '{w} · {other}: {e}, {ev} DKK/kWh · spot price, before grid tariff, taxes and VAT'],
+    kPrice: ['{v} DKK/kWh', '{w} · {other}: {e}, {ev} DKK/kWh'],
     kEv: {
       'Peak wind': ['{v} MW of wind', '{date} — the strongest wind output of the last 30 days'],
       'Peak solar': ['{v} MW of solar', "{date} — the sun's biggest contribution in the window"],
@@ -3472,18 +3501,58 @@ $('#infoBtn').onclick = () => {
 /* The side columns used to cap at calc(100vh - 250px), a guess that left them
    taller than the clear space above the footer - fine at the old type size,
    a guaranteed collision now that everything is ~30% larger. Measure instead. */
+/* A short window (a 1280x800 or 1366x768 laptop) cannot hold every card whole
+   above the timeline card. Rather than clipping a card mid-row, something
+   gives way - measured at every resize, not guessed, so a taller window gets
+   it all back. Left column, in order, until the production card stands whole:
+     fold-keys   the legend drops its keyboard-shortcut line
+     fold-lgd    the legend's colour rows go two-up
+     fold-prod   the production card's breakdown becomes a compact list,
+                 without the derived consumption line
+     fold-prod2  ... and then only the headline (total and green share) stays
+   Right column, in order:
+     tiles2      the four tiles go two-up instead of one-up
+     links-cut   the connections card keeps whole rows and scrolls inside
+     drop-links  fewer than three rows would fit: the card is dropped
+   The max-heights stay as a hard stop for windows shorter than even that. */
+const FOLDS = ['fold-keys', 'fold-lgd', 'fold-prod', 'fold-prod2'];
 const anchorFoot = () => {
-  const L = $('#left'), R = $('#right'), F = $('#foot');
+  const L = $('#left'), R = $('#right'), F = $('#foot'), K = $('#links'), B = document.body.classList;
+  const reset = () => { B.remove(...FOLDS, 'tiles2', 'links-cut', 'drop-links'); K.style.maxHeight = ''; };
   if (innerWidth <= 1024) {            // stacked flow: nothing to anchor or cap
-    F.style.bottom = ''; L.style.maxHeight = ''; R.style.maxHeight = '';
+    F.style.bottom = ''; L.style.maxHeight = ''; R.style.maxHeight = ''; reset();
     return;
   }
   const tl = $('#bottom').offsetHeight;
   F.style.bottom = (tl + 26) + 'px';
-  const footTop = F.getBoundingClientRect().top;
+  reset(); L.style.maxHeight = ''; R.style.maxHeight = '';
   // measured top, not 96: the card sits at 88px up to 1440px wide, and the 8px went to waste
-  L.style.maxHeight = Math.max(180, footTop - L.getBoundingClientRect().top - 14) + 'px';
-  R.style.maxHeight = Math.max(180, innerHeight - 96 - tl - 32) + 'px';
+  const leftRoom = () => F.getBoundingClientRect().top - L.getBoundingClientRect().top - 14;
+  for (const f of FOLDS) { if (L.scrollHeight <= leftRoom()) break; B.add(f); }
+  const rightRoom = innerHeight - 96 - tl - 32;
+  const fitsR = () => R.scrollHeight <= rightRoom;
+  if (!fitsR()) {
+    /* How many whole connection rows the column leaves room for, with the
+       card's header and paddings (its "chrome") and everything above it taken
+       out first. Two-up tiles only if that is what makes three rows fit; a
+       card cut to whole rows scrolls inside and ends on a row, never in one. */
+    B.add('links-cut');
+    const rows = $$('#lkRows .lk'), n = rows.length;
+    const rowH = n > 1 ? (rows[n - 1].offsetTop - rows[0].offsetTop) / (n - 1) : 22;
+    const chrome = K.offsetHeight - n * rowH;
+    const keepRows = () => Math.floor((rightRoom - (R.scrollHeight - K.offsetHeight) - chrome) / rowH);
+    let keep = keepRows();
+    if (keep < 3) { B.add('tiles2'); keep = keepRows(); }
+    if (keep >= n) B.remove('links-cut');
+    else if (keep >= 3) K.style.maxHeight = Math.floor(chrome + keep * rowH) + 'px';
+    else {
+      B.remove('links-cut'); B.add('drop-links');
+      B.remove('tiles2');                    // one-up tiles are the usual look: keep them if they fit alone
+      if (!fitsR()) B.add('tiles2');
+    }
+  }
+  L.style.maxHeight = Math.max(80, leftRoom()) + 'px';
+  R.style.maxHeight = Math.max(80, rightRoom) + 'px';
 };
 new ResizeObserver(anchorFoot).observe($('#bottom'));
 addEventListener('resize', anchorFoot);
@@ -3648,7 +3717,8 @@ function liveCaption(step, f) {
     const hero = w || e, other = w ? e : null;
     const tpl = T('kPrice');
     return [tpl[0].replace('{v}', kNum(SPOT.kr(hero.avg), 2)),
-      tpl[1].replace('{w}', span(hero)).replace('{other}', T(w ? 'kEastL' : 'kWestL')).replace('{e}', span(other)).replace('{ev}', price(other))];
+      tpl[1].replace('{w}', span(hero)).replace('{other}', T(w ? 'kEastL' : 'kWestL')).replace('{e}', span(other)).replace('{ev}', price(other)) +
+      `<span class="kl">${T('spotNote')}</span>`];   // the label on a line of its own, same wording as the cards
   }
   // provenance beat — honesty evaluated at render time, not cycle start
   if (liveOK && lastPoll) {

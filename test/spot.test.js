@@ -253,10 +253,31 @@ test('render() keeps the bottom-right corner free for the credit when asked', ()
   assert.ok(day && +day[1] > 600, 'without rightPad the axis runs to the right edge');
 });
 
-test('render() degrades to a one-line note without data or without a future', () => {
+test('strip text is 11 px at scale 1 and never smaller, whatever the strip height', () => {
+  for (const h of [62, 70, 76, 90]) for (const w of [320, 900, 1400]) {
+    const svg = SPOT.render(sameStart, { ...opts, w, h, mark: true });
+    const sizes = [...svg.matchAll(/font-size="([\d.]+)"/g)].map(m => +m[1]);
+    assert.ok(sizes.length > 10);
+    assert.ok(sizes.every(f => f >= 11), `${w}x${h}: a font-size below 11 px: ${Math.min(...sizes)}`);
+    // the lane holds the text: tabs are at least as tall as the font
+    for (const t of rects(svg, 'tab')) assert.ok(true, t);
+    const laneH = +svg.match(/<rect class="tab[^"]*"[^>]*height="([\d.]+)"/)[1];
+    assert.ok(laneH >= 11 + 2, `${w}x${h}: lane ${laneH} px too low for 11 px text`);
+  }
+  const kiosk = SPOT.render(sameStart, { ...opts, w: 1400, h: 210, scale: 2.2, mark: true });
+  assert.ok([...kiosk.matchAll(/font-size="([\d.]+)"/g)].every(m => +m[1] >= 24));
+});
+
+test('render() degrades to a note without data or without a future, wrapped on a phone', () => {
   const none = SPOT.render(null, opts);
-  assert.ok(none.includes('Kommende priser kunne ikke hentes'));
+  assert.ok(none.includes('Kommende priser kunne ikke hentes lige nu — resten af kortet virker som før'));
   assert.equal(count(none, /<rect/g), 0);
+  assert.equal(count(none, /<text class="none"/g), 1);                 // one line at 900 px
+  const phone = SPOT.render(null, { ...opts, w: 317 });
+  assert.equal(count(phone, /<text class="none"/g), 2);                // two at 317 px, split at the dash
+  assert.ok(phone.includes('>Kommende priser kunne ikke hentes lige nu</text>'));
+  assert.ok(phone.includes('>— resten af kortet virker som før</text>'));
+  assert.ok(/font-size="11"/.test(phone));
   const en = SPOT.render(undefined, { ...opts, lang: 'en' });
   assert.ok(en.includes('Upcoming prices could not be fetched'));
   const stale = SPOT.render(real, { ...opts, now: at(13) });    // the series ended at 02:00
@@ -342,7 +363,7 @@ test('index.html carries the strip, the button, the label and the CC BY 4.0 cred
   // credit, licence and "processed" in both languages' info text; the kiosk line carries the label
   assert.ok(html.includes('Kilde: Energinet (www.energidataservice.dk), licens CC BY 4.0. Tallene er bearbejdet'));
   assert.ok(html.includes('Source: Energinet (www.energidataservice.dk), licence CC BY 4.0. Figures are processed'));
-  assert.ok(html.includes('spotpris, før nettarif, afgifter og moms\'],'));
+  assert.ok(html.includes('<span class="kl">${T(\'spotNote\')}</span>'));   // the kiosk line carries the label on its own line
   assert.ok(!html.includes('Conditions for use of Danish public-sector data'));
 });
 
@@ -361,6 +382,19 @@ test('the browser never calls api.energidataservice.dk: the cards read the runni
   assert.ok(html.includes("S.mode === 'live' ? spotNow(t.a) : null"));
   assert.ok(html.includes("pConv: 'omregnet 7,46'"));          // the fallback says it converted
   assert.ok(html.includes("QP.has('udenpriser')"));             // the fallback state, on demand
+});
+
+test('short screens fold or drop a card rather than cutting one mid-row', () => {
+  assert.ok(html.includes("const FOLDS = ['fold-keys', 'fold-lgd', 'fold-prod', 'fold-prod2'];") && html.includes("B.add('drop-links')"));
+  assert.ok(html.includes('body.fold-lgd #foot{display:grid;grid-template-columns:1fr 1fr'));
+  assert.ok(html.includes("B.add('tiles2')") && html.includes("B.add('links-cut')") && html.includes('const keepRows = ()'));
+  assert.ok(html.includes('body.tiles2 #right #tiles{grid-template-columns:1fr 1fr}'));
+  assert.ok(html.includes('body.links-cut #links{flex:none;overflow-y:auto'));
+  assert.ok(html.includes('body.fold-prod .row .bar{display:none}'));
+  assert.ok(html.includes('body.fold-prod2 #rows,body.fold-prod2 #consLine{display:none}'));
+  assert.ok(html.includes('body.drop-links #links{display:none}'));
+  assert.ok(html.includes('#spotStrip{grid-area:2/1/3/3;height:76px}'));
+  assert.ok(!/#spotStrip\{height:\d+px\}/.test(html), 'no media rule shrinks the strip');
 });
 
 test('the kiosk beat names the area and window of its headline and carries the credit', () => {

@@ -96,8 +96,20 @@ striben under og kildeangivelsen nederst.
 
 Vinduerne er mærket »1 t«, »3 t« og »8 t« i en bane over søjlerne, skraveret som deres
 bånd og skubbet til højre, hvis to ellers ville røre hinanden — to mærkater deler aldrig
-plads. På en computer tager teksten med tidsrummene titlens plads i striben, mens knappen
-er slået til, så kortet under tidslinjen ikke vokser og ikke skubber til de andre kort.
+plads. Teksten i striben er 11 px og bliver aldrig mindre; banen og tidsaksen er målt ud
+fra skriften, og søjlerne får resten. På en computer tager teksten med tidsrummene titlens
+plads i striben, mens knappen er slået til, så kortet under tidslinjen ikke vokser og ikke
+skubber til de andre kort.
+
+**Lave skærme** (en bærbar på 1280×800 eller 1366×768) kan ikke rumme alle kort helt over
+tidslinjen. Intet kort klippes midt i en række. I venstre spalte giver noget efter i denne
+rækkefølge, indtil produktionskortet står helt: signaturforklaringen mister linjen med
+tastaturgenveje, dens farverækker stilles to og to, produktionskortets fordeling bliver en
+kompakt liste uden den beregnede forbrugslinje, og til sidst står kun overskriften (samlet
+produktion og andelen af vind og sol). I højre spalte stilles de fire felter først to og to;
+rækker forbindelseskortet stadig ikke, beholder det hele rækker og ruller indeni, og kan
+færre end tre rækker stå, udelades det. Det måles ved hver størrelsesændring, så et højere
+vindue får det hele tilbage.
 
 **Data:** Browseren kalder aldrig Energinet for priserne. `prices.js` henter datasættet
 `DayAheadPrices` (15 minutters opløsning; det erstattede `Elspotprices`, som stoppede
