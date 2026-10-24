@@ -239,37 +239,62 @@ button{font-family:inherit}
 #speed .chip{padding:5px 8px}
 
 /* ---------- upcoming spot prices (SPOT) ----------
-   The strip under the timeline controls: DK1 and DK2 in quarters, the
-   "Hvornår er det billigst?" chip, the source line. The SVG is drawn by the
-   SPOT block and styled here through the theme tokens, so it follows the
-   light build like everything else. */
-#spot{display:flex;flex-direction:column;gap:7px;padding-top:9px;border-top:1px solid var(--hairline)}
-#spotHead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-#spotHead .k{font-size:var(--fs-micro);letter-spacing:.13em;text-transform:uppercase;color:var(--dimmer);font-weight:600}
-#spotHead .n{font-size:var(--fs-micro);color:var(--dimmer)}
-#spotHead a{margin-left:auto;font-size:var(--fs-micro);color:var(--dimmer);text-decoration:none}
-#spotHead a:hover{color:var(--ink);text-decoration:underline}
+   The strip under the timeline controls: a title row, DK1 and DK2 in
+   quarters, the "Hvornår er det billigst?" chip and the credit. A grid, so
+   the pieces can sit differently on a phone without moving in the markup.
+   The SVG is drawn by the SPOT block and styled here through the theme
+   tokens, so it follows the light build like everything else. */
+#spot{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px 12px;align-items:center;
+  padding-top:9px;border-top:1px solid var(--hairline)}
+#spotTitle{grid-area:1/1;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-width:0}
+#spotTitle .k{font-size:var(--fs-micro);letter-spacing:.13em;text-transform:uppercase;color:var(--dimmer);font-weight:600}
+#spotTitle .n{font-size:var(--fs-micro);color:var(--dimmer)}
+#cheapBtn{grid-area:1/2;justify-self:end}
 #cheapBtn[disabled]{opacity:.45;cursor:default}
-#spotStrip{height:74px}
+#spotStrip{grid-area:2/1/3/3;height:74px}
 #spotStrip svg{display:block;width:100%;height:100%}
-#spotSum{font-size:var(--fs-xs);color:var(--dim);line-height:1.6;display:flex;flex-direction:column;gap:2px}
+/* desktop: the summary takes the title's cell while the button is on - one
+   line, cut with an ellipsis rather than wrapped, so the card keeps its height */
+#spotSum{grid-area:1/1;min-width:0;font-size:var(--fs-micro);color:var(--dim);line-height:1.5;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #spotSum b{color:var(--ink);font-weight:600}
+#spotSum .area+.area::before{content:" · "}
+#spot.marked #spotTitle{display:none}
+/* the credit rides the strip's axis row, bottom right; render() keeps that
+   corner free (rightPad), so nothing is ever under it */
+#spotSrc{position:absolute;right:0;bottom:1px;font-size:var(--fs-micro);color:var(--dimmer);text-decoration:none;line-height:1}
+#spotSrc:hover{color:var(--ink);text-decoration:underline}
+@media (max-width:1024px){
+  /* phone and tablet: everything on its own row - the sheet scrolls, so the
+     summary may take the lines it needs and the title stays put */
+  #spot{grid-template-columns:minmax(0,1fr)}
+  #spotTitle{grid-area:1/1} #cheapBtn{grid-area:2/1;justify-self:start} #spotStrip{grid-area:3/1}
+  #spotSum{grid-area:4/1;white-space:normal;font-size:var(--fs-xs)}
+  #spotSum .area{display:block} #spotSum .area+.area::before{content:none}
+  #spot.marked #spotTitle{display:flex}
+  #spotSrc{position:static;grid-area:5/1;justify-self:end}
+}
 .spotsvg text{font-family:var(--sans);fill:var(--dim)}
 .spotsvg .area{font-weight:700;fill:var(--dimmer);letter-spacing:.06em}
 .spotsvg .b{fill:var(--dim)} .spotsvg .b.past{fill-opacity:.4} .spotsvg .b.neg{fill:var(--exp-gfx)} .spotsvg .b.hi{fill:var(--bad)}
 .spotsvg .zero{stroke:var(--dimmer);stroke-dasharray:3 3;stroke-width:1}
 .spotsvg .day{stroke:var(--line);stroke-width:1} .spotsvg .daylbl{font-weight:700;fill:var(--ink)}
 .spotsvg .now{stroke:var(--exp-gfx);stroke-width:1.5} .spotsvg .nowlbl{fill:var(--exp);font-weight:700}
-.spotsvg .win{fill:var(--exp-gfx);stroke:var(--exp-gfx);stroke-width:1}
+.spotsvg .win,.spotsvg .tab{fill:var(--exp-gfx);stroke:var(--exp-gfx);stroke-width:1}
 .spotsvg .win-8{fill-opacity:.14;stroke-opacity:.35} .spotsvg .win-3{fill-opacity:.22;stroke-opacity:.6}
 .spotsvg .win-1{fill-opacity:.34;stroke-opacity:1;stroke-width:1.5}
-.spotsvg .winlbl{fill:var(--ink);font-weight:700;paint-order:stroke;stroke:var(--panel-solid);stroke-width:3px;stroke-linejoin:round}
+.spotsvg .winlbl{fill:var(--ink);font-weight:700}
 .spotsvg .none{fill:var(--dimmer)}
-/* the kiosk beat: the same strip as a card under the caption, windows marked */
-#kioskCap .kg{display:none;margin:18px auto 0;padding:12px 16px;background:var(--panel-solid);border:1px solid var(--line);border-radius:var(--radius)}
+/* the kiosk beat: one solid card - tag, headline, line, the strip, the credit -
+   so the text sits on paper (ink 13:1, dim 5.8:1), not on the moving map */
+body.kiosk #kioskCap.price{width:min(1500px,90vw);max-width:none;background:var(--panel-solid);border:1px solid var(--line);
+  border-radius:var(--radius-lg);padding:clamp(14px,1.6vw,34px) clamp(18px,2vw,44px);box-shadow:var(--shadow)}
+#kioskCap.price .kh,#kioskCap.price .ks{text-shadow:none}
+#kioskCap .kg{display:none;margin-top:clamp(12px,1.4vw,28px);padding-top:clamp(10px,1.2vw,24px);border-top:1px solid var(--hairline)}
 #kioskCap.price .kg{display:block}
 #kioskCap .kg svg{display:block;width:100%;height:auto}
-body.kiosk #kioskCap.price{width:min(1500px,90vw);max-width:none}
+#kioskCap .kc{display:none;margin-top:clamp(8px,1vw,18px);font-size:clamp(12px,1vw,22px);color:var(--dimmer)}
+#kioskCap.price .kc{display:block}
 
 /* ---------- liveness / mini / first-run / sim ---------- */
 #upd{font-size:var(--fs-xs);color:var(--dimmer);padding:7px 12px;border-radius:var(--pill);
@@ -475,7 +500,9 @@ body:not(.ready) #status,body:not(.ready) #sheet,body:not(.ready) #mini{visibili
   /* the timeline card gives up a little too, so the production card above the legend fits a
      1440x790 browser window (a 13" laptop) whole; shorter windows scroll its last line */
   #spark{height:44px} #bottom{padding:11px 16px 10px}
-  #spotStrip{height:54px} #spot{gap:5px;padding-top:7px}
+  /* the price strip pays for itself here: a lower strip and a tighter chip,
+     so the card is no taller than before it came */
+  #spotStrip{height:62px} #spot{gap:3px 12px;padding-top:5px} #cheapBtn{padding:3px 9px}
 }
 /* tablet and phone: the HUD stops floating and becomes a scrollable stack */
 @media (max-width:1024px){
@@ -728,7 +755,7 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
   <div id="err"></div>
   <div id="mini" class="card mono"></div>
   <div id="wowNote"></div>
-  <div id="kioskCap"><svg class="kq" viewBox="0 0 33 33" shape-rendering="crispEdges" aria-hidden="true"><rect width="33" height="33" fill="#fff"/><path stroke="#1A1A1A"/></svg><div class="kk"><span class="kdot"></span><span class="kt"></span></div><div class="kh"></div><div class="ks"></div><div class="kg"></div><div class="kx" data-i18n="kHint">Tryk K for at afslutte</div></div>
+  <div id="kioskCap"><svg class="kq" viewBox="0 0 33 33" shape-rendering="crispEdges" aria-hidden="true"><rect width="33" height="33" fill="#fff"/><path stroke="#1A1A1A"/></svg><div class="kk"><span class="kdot"></span><span class="kt"></span></div><div class="kh"></div><div class="ks"></div><div class="kg"></div><div class="kc"></div><div class="kx" data-i18n="kHint">Tryk K for at afslutte</div></div>
   <div id="kioskStamp"><span class="dot"></span><span class="mono" id="kClock">—</span><span data-i18n="kSrc">Energinet Energi Data Service · åbne data</span></div>
 
   <!-- The panels. On a desktop #sheet is display:contents and changes nothing;
@@ -763,7 +790,7 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
       <div class="tile card"><div class="k">DK2 <span style="color:var(--dimmer)" data-i18n="east">Øst</span></div>
         <div class="v mono" id="p2V">—<i>kr./kWh</i></div><div class="sub eur mono" id="p2E"></div><div class="sub" id="p2S">—</div></div>
     </div>
-    <div id="spotNote" data-i18n="spotNote">spotpris (engros) · uden afgifter, moms og transport</div>
+    <div id="spotNote" data-i18n="spotNote">spotpris, før nettarif, afgifter og moms</div>
     <div id="links" class="card">
       <h3><span data-i18n="ic">Udlandsforbindelser</span><span data-i18n="mw">MW</span></h3>
       <div id="lkRows"></div>
@@ -797,14 +824,14 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
          Hidden in kiosk with the rest of this card - the kiosk shows the same
          strip as a caption beat instead. Texts are set by spotRender(). -->
     <div id="spot">
-      <div id="spotHead">
-        <span class="k">Kommende elpriser</span>
-        <span class="n">spotpris, før nettarif, afgifter og moms</span>
-        <button type="button" id="cheapBtn" class="chip" aria-pressed="false" disabled>Hvornår er det billigst?</button>
-        <a id="spotSrc" href="https://www.energidataservice.dk/tso-electricity/DayAheadPrices" target="_blank" rel="noopener">Kilde: Energinet (www.energidataservice.dk), CC BY 4.0 · tallene er bearbejdet (omregnet til kr./kWh)</a>
-      </div>
+      <span id="spotTitle"><span class="k">Kommende elpriser</span> <span class="n">spotpris, før nettarif, afgifter og moms</span></span>
+      <button type="button" id="cheapBtn" class="chip" aria-pressed="false" disabled>Hvornår er det billigst?</button>
       <div id="spotStrip"></div>
-      <div id="spotSum" hidden></div>
+      <!-- the windows in words. On a desktop it takes the title's place in the
+           top row while the button is on, so the card never changes height;
+           on a phone it is its own lines under the strip -->
+      <span id="spotSum" hidden></span>
+      <a id="spotSrc" href="https://www.energidataservice.dk/tso-electricity/DayAheadPrices" target="_blank" rel="noopener">Kilde: Energinet (www.energidataservice.dk), CC BY 4.0 · tallene er bearbejdet (omregnet til kr./kWh)</a>
     </div>
   </div>
 
@@ -880,7 +907,7 @@ const SPOT = (() => {
       head: 'Kommende elpriser', note: 'spotpris, før nettarif, afgifter og moms', btn: 'Hvornår er det billigst?',
       src: 'Kilde: Energinet (www.energidataservice.dk), CC BY 4.0 · tallene er bearbejdet (omregnet til kr./kWh)',
       none: 'Kommende priser kunne ikke hentes lige nu — resten af kortet virker som før',
-      now: 'nu', tom: 'i morgen', h: 't', unit: 'kr./kWh', cheapest: 'billigst', noArea: 'ingen data',
+      now: 'nu', tom: 'i morgen', h: 't', unit: 'kr./kWh', noArea: 'ingen data',
       area: { DK1: 'DK1 Vest', DK2: 'DK2 Øst' },
       aria: 'Kommende spotpriser for DK1 og DK2 i kvarterer'
     },
@@ -888,7 +915,7 @@ const SPOT = (() => {
       head: 'Upcoming power prices', note: 'spot price, before grid tariff, taxes and VAT', btn: 'When is it cheapest?',
       src: 'Source: Energinet (www.energidataservice.dk), CC BY 4.0 · figures processed (converted to DKK/kWh)',
       none: 'Upcoming prices could not be fetched right now — the rest of the map works as before',
-      now: 'now', tom: 'tomorrow', h: 'h', unit: 'DKK/kWh', cheapest: 'cheapest', noArea: 'no data',
+      now: 'now', tom: 'tomorrow', h: 'h', unit: 'DKK/kWh', noArea: 'no data',
       area: { DK1: 'DK1 West', DK2: 'DK2 East' },
       aria: 'Upcoming spot prices for DK1 and DK2 in quarter hours'
     }
@@ -967,8 +994,9 @@ const SPOT = (() => {
     }
     return best && { i: best.i, len, avg: best.sum / len };
   }
-  /* The 1, 3 and 8 hour windows for one area, prices in DKK/MWh. One entry
-     per requested length, null where the series ahead is too short. */
+  /* The 1, 3 and 8 hour windows for one area, prices in DKK/MWh, among the
+     quarters that have not started yet. One entry per requested length,
+     null where the series ahead is too short. */
   function windows(d, area, now, hours) {
     const prices = d.p[area];
     const from = firstFuture(d, now), perHour = 60 / d.step;
@@ -984,12 +1012,16 @@ const SPOT = (() => {
   }
 
   /* Inline SVG, one row per area, from two hours before the running hour to
-     the end of the series. opts: { w, h, lang, now, mark, hi, scale }. w/h in CSS
-     px. `mark` draws the cheapest windows. `hi` is the DKK/MWh above which a
-     quarter is drawn as expensive (the page passes 1.8 × the 30-day DK1
-     median, the tiles' own threshold). `scale` enlarges type and gutters for
-     the kiosk. Colours come from the page's CSS variables, so the strip
-     follows the theme like everything else. */
+     the end of the series. Each row is a label lane over the bars: the lane
+     carries the area name and, with `mark`, one tab per window ("8 t", "3 t",
+     "1 t") shaded like its band and placed at the band's start - shifted
+     right when two would touch, so no two labels ever share a spot.
+     opts: { w, h, lang, now, mark, hi, scale, rightPad }. w/h in CSS px.
+     `hi` is the DKK/MWh above which a quarter is drawn as expensive (the
+     page passes 1.8 × the 30-day DK1 median, the tiles' own threshold).
+     `scale` enlarges type and gutters for the kiosk. `rightPad` keeps that
+     many px of the axis row free for the page's credit line. Colours come
+     from the page's CSS variables, so the strip follows the theme. */
   function render(d, opts) {
     const lang = opts.lang === 'en' ? 'en' : 'da', L = I18N[lang];
     const W = Math.max(60, opts.w | 0), H = Math.max(30, opts.h | 0), sc = opts.scale || 1;
@@ -1005,24 +1037,30 @@ const SPOT = (() => {
     const hour0 = cur - (((cur % perHour) + perHour) % perHour);
     const i0 = Math.max(0, hour0 - 2 * perHour);
     const n = d.n - i0;
-    const gx = Math.round(32 * sc), axisH = Math.round(14 * sc), gap = Math.round(4 * sc);
+    const pad = Math.round(2 * sc), rightPad = Math.max(0, opts.rightPad | 0);
+    const axisH = Math.round(15 * sc), gap = Math.round(4 * sc);
     const rowH = Math.floor((H - axisH - gap) / 2);
-    const sw = (W - gx) / n, bw = Math.max(0.8, sw - Math.min(1, sw * 0.18));
-    const X = i => gx + (i - i0) * sw;
+    const laneH = Math.min(Math.round(10 * sc), Math.floor(rowH * 0.42)), barH = rowH - laneH;
+    const fsLane = Math.min(fs, laneH - 1);
+    const sw = (W - pad) / n, bw = Math.max(0.8, sw - Math.min(1, sw * 0.18));
+    const X = i => pad + (i - i0) * sw;
     const vals = [];
     AREAS.forEach(a => { for (let i = i0; i < d.n; i++) if (d.p[a][i] !== null) vals.push(d.p[a][i]); });
     const max = Math.max(1, ...vals), min = Math.min(0, ...vals);
-    const Y = (top, v) => top + rowH - (v - min) / (max - min) * rowH;
-    const axisY = r(H - axisH + fs + 1), textW = t => t.length * fs * 0.6;
-    /* axis labels never overlap: "nu" and the midnight labels are placed
-       first, hour ticks only where they fit between them */
+    const Y = (top, v) => top + laneH + barH - (v - min) / (max - min) * barH;
+    const axisY = r(H - axisH + fs + 1), textW = (t, f) => t.length * (f || fs) * 0.6;
+    /* axis labels never overlap: the credit corner, "nu" and the midnight
+       labels are placed first, hour ticks only where they fit between them */
     const taken = [];
     const free = (x1, x2) => taken.every(([a, b]) => x2 < a - 3 || x1 > b + 3);
+    if (rightPad > 0) taken.push([W - rightPad, W + 1e6]);
     let s = head;
-    let nowX = null;
+    let nowX = null, nowLbl = '';
     if (cur >= i0 && cur < d.n) {
       nowX = r(X(cur) + (now - (t0 + cur * step)) / step * sw);   // inside the running quarter
-      taken.push([nowX, nowX + 3 + textW(L.now)]);
+      const tw = textW(L.now);
+      if (free(nowX + 3, nowX + 3 + tw)) { taken.push([nowX + 3, nowX + 3 + tw]); nowLbl = `<text class="nowlbl" x="${r(nowX + 3)}" y="${axisY}" font-size="${fs}">${esc(L.now)}</text>`; }
+      else { taken.push([nowX - 3 - tw, nowX - 3]); nowLbl = `<text class="nowlbl" x="${r(nowX - 3)}" y="${axisY}" font-size="${fs}" text-anchor="end">${esc(L.now)}</text>`; }
     }
     const tom = tomorrowDate(now), every = sw * perHour * 3 >= 30 * sc ? 3 : 6;
     let ticks = '';
@@ -1031,21 +1069,24 @@ const SPOT = (() => {
       if (p.m !== 0) continue;
       const x = r(X(i));
       if (p.h === 0) {
-        const lbl = p.date === tom ? L.tom : p.dm;
-        let lx = x + 3;
-        if (!free(lx, lx + textW(lbl))) lx = taken[0][1] + 6;   // bumped right of "nu"
-        taken.push([lx, lx + textW(lbl)]);
+        // the midnight label goes right of its line, else left of it, else
+        // stays away (the line alone still marks the day) - never on "nu" or
+        // under the credit
+        const lbl = p.date === tom ? L.tom : p.dm, lw = textW(lbl);
         s += `<line class="day" x1="${x}" y1="0" x2="${x}" y2="${H - axisH}"/>`;
-        ticks += `<text class="daylbl" x="${r(lx)}" y="${axisY}" font-size="${fs}">${esc(lbl)}</text>`;
+        if (free(x + 3, x + 3 + lw)) { taken.push([x + 3, x + 3 + lw]); ticks += `<text class="daylbl" x="${r(x + 3)}" y="${axisY}" font-size="${fs}">${esc(lbl)}</text>`; }
+        else if (free(x - 3 - lw, x - 3)) { taken.push([x - 3 - lw, x - 3]); ticks += `<text class="daylbl" x="${r(x - 3)}" y="${axisY}" font-size="${fs}" text-anchor="end">${esc(lbl)}</text>`; }
       } else if (p.h % every === 0 && free(x + 2, x + 2 + textW(p.hm))) {
         taken.push([x + 2, x + 2 + textW(p.hm)]);
         ticks += `<text class="tick" x="${r(x + 2)}" y="${axisY}" font-size="${fs}">${p.hm}</text>`;
       }
     }
     AREAS.forEach((a, ri) => {
-      const top = ri * (rowH + gap), arr = d.p[a];
-      s += `<text class="area" x="0" y="${r(top + rowH / 2)}" dominant-baseline="middle" font-size="${fs}">${a}</text>`;
-      if (min < 0) s += `<line class="zero" x1="${gx}" y1="${r(Y(top, 0))}" x2="${W}" y2="${r(Y(top, 0))}"/>`;
+      const top = ri * (rowH + gap), arr = d.p[a], barTop = top + laneH;
+      const name = L.area[a];
+      s += `<text class="area" x="${pad}" y="${r(top + fsLane * 0.95)}" font-size="${fsLane}">${esc(name)}</text>`;
+      const lane = [[0, pad + textW(name, fsLane) + 4]];   // what the lane already holds, left to right
+      if (min < 0) s += `<line class="zero" x1="${pad}" y1="${r(Y(top, 0))}" x2="${W}" y2="${r(Y(top, 0))}"/>`;
       let any = false;
       for (let i = i0; i < d.n; i++) {
         if (arr[i] === null) continue;
@@ -1056,36 +1097,48 @@ const SPOT = (() => {
         s += `<rect class="${cls}" x="${r(X(i))}" y="${r(Math.min(y0, y1))}" width="${r(bw)}" height="${r(Math.max(0.6, Math.abs(y0 - y1)))}">` +
           `<title>${t1}–${t2} · ${fmt(kr(v), 2, lang)} ${esc(L.unit)}</title></rect>`;
       }
-      if (!any) s += `<text class="none" x="${gx + fs}" y="${r(top + rowH / 2)}" dominant-baseline="middle" font-size="${fs}">${esc(L.noArea)}</text>`;
+      if (!any) s += `<text class="none" x="${pad + fs}" y="${r(barTop + barH / 2)}" dominant-baseline="middle" font-size="${fs}">${esc(L.noArea)}</text>`;
       if (opts.mark && any) {
-        // 8 h first, so the 3 h and 1 h bands draw on top of it
+        // bands: 8 h first, so the 3 h and 1 h bands draw on top of it
         const ws = windows(d, a, now).filter(Boolean).sort((p, q) => q.h - p.h);
-        const lx = {};
         ws.forEach(w => {
           const x1 = X(w.i), x2 = X(w.i + w.len);
-          s += `<rect class="win win-${w.h}" x="${r(x1)}" y="${top}" width="${r(x2 - x1)}" height="${rowH}" rx="2"/>`;
-          const k = (lx[w.i] = (lx[w.i] || 0) + 1) - 1;   // windows sharing a start: labels side by side
-          s += `<text class="winlbl" x="${r(x1 + 3 + k * fs * 2.4)}" y="${r(top + fs + 1)}" font-size="${r(fs * 0.95)}">${w.h} ${esc(L.h)}</text>`;
+          s += `<rect class="win win-${w.h}" x="${r(x1)}" y="${barTop}" width="${r(x2 - x1)}" height="${barH}" rx="2">` +
+            `<title>${w.h} ${esc(L.h)} · ${esc(spanLabel(w, now, L))} · ${fmt(kr(w.avg), 2, lang)} ${esc(L.unit)}</title></rect>`;
+        });
+        // tabs in the lane: at the band's start, left to right, pushed right of
+        // whatever already sits there - never on top of another label
+        ws.slice().sort((p, q) => (p.i - q.i) || (q.h - p.h)).forEach(w => {
+          const lbl = `${w.h} ${L.h}`, tw = textW(lbl, fsLane) + 6 * sc;
+          let x = X(w.i);
+          for (const [a1, b1] of lane) if (!(x + tw < a1 - 3 || x > b1 + 3)) x = Math.max(x, b1 + 3);
+          x = Math.min(x, W - tw);
+          lane.push([x, x + tw]);
+          s += `<rect class="tab win-${w.h}" x="${r(x)}" y="${top}" width="${r(tw)}" height="${laneH - 1}" rx="2"/>` +
+            `<text class="winlbl" x="${r(x + 3 * sc)}" y="${r(top + fsLane * 0.95)}" font-size="${fsLane}">${esc(lbl)}</text>`;
         });
       }
     });
     s += ticks;
-    if (nowX !== null) {
-      s += `<line class="now" x1="${nowX}" y1="0" x2="${nowX}" y2="${H - axisH}"/>`;
-      s += `<text class="nowlbl" x="${r(nowX + 3)}" y="${axisY}" font-size="${fs}">${esc(L.now)}</text>`;
-    }
+    if (nowX !== null) s += `<line class="now" x1="${nowX}" y1="0" x2="${nowX}" y2="${H - axisH}"/>` + nowLbl;
     return s + '</svg>';
   }
 
-  /* The windows as one line of HTML per area, for the text under the strip:
-     "DK1 Vest · billigst: 1 t 03:00–04:00 0,09 · 3 t … · 8 t … kr./kWh" */
+  /* The windows as one <span class="area"> per area for the text next to the
+     strip - inline on a desktop, one line each on a phone (CSS decides):
+     "DK1 Vest · i morgen: 1 t 02:00–03:00 0,00 · 3 t … · 8 t … kr./kWh".
+     "i morgen" is said once when every window is tomorrow's. */
   function summary(d, opts) {
     if (!d || !looksSane(d)) return '';
     const lang = opts.lang === 'en' ? 'en' : 'da', L = I18N[lang];
+    const tom = tomorrowDate(opts.now);
     return AREAS.map(a => {
       const ws = windows(d, a, opts.now).filter(Boolean);
-      const parts = ws.map(w => `<b>${w.h} ${esc(L.h)}</b> ${esc(spanLabel(w, opts.now, L))} <b>${fmt(kr(w.avg), 2, lang)}</b>`);
-      return `<div><b>${esc(L.area[a])}</b> · ${esc(L.cheapest)}: ${parts.length ? parts.join(' · ') + ' ' + esc(L.unit) : '—'}</div>`;
+      if (!ws.length) return `<span class="area"><b>${esc(L.area[a])}</b> —</span>`;
+      const allTom = ws.every(w => dkParts(w.start).date === tom);
+      const span = w => allTom ? dkParts(w.start).hm + '–' + dkParts(w.end).hm : spanLabel(w, opts.now, L);
+      const parts = ws.map(w => `<b>${w.h} ${esc(L.h)}</b> ${esc(span(w))} <b>${fmt(kr(w.avg), 2, lang)}</b>`);
+      return `<span class="area"><b>${esc(L.area[a])}</b> ·${allTom ? ' ' + esc(L.tom) + ':' : ''} ${parts.join(' · ')} ${esc(L.unit)}</span>`;
     }).join('');
   }
 
@@ -2399,8 +2452,6 @@ const MAX_AGE_MS = 3 * 3600 * 1000;   // beyond this, prefer the embedded histor
    CDN-cached copy, so a threshold above ~10 minutes would let a stale cached
    file short-circuit the fresher uncached one. */
 const FRESH_MS = 8 * 60 * 1000;
-const API = (location.protocol === 'file:'
-  ? 'https://api.energidataservice.dk' : '/api') + '/dataset/';
 let liveFrame = null, liveOK = false, liveErr = null, lastPoll = 0;
 /* When the underlying measurement was taken. The HUD reports the age of the
    DATA, not the age of the fetch — the same thing only when the browser talks
@@ -2427,9 +2478,8 @@ const dkNow = () => dkClock(0);
 
    0. api.gridkort.dk (DATA_URLS[0]) — a Cloudflare Worker that fetches from
       Energinet and caches for 60 s, so this is normally the one that wins.
-   1. /api/ on this host — a reverse proxy is per-minute fresh, so it beats any
-      published file. Only reachable when a host actually proxies it; on a
-      plain static host this simply fails and costs one request.
+   1. (gone) the browser used to try /api/ on its own host as well; it no
+      longer calls Energinet at all, see the note above pollLive.
    2. data.json beside the page — whoever deployed it sets the cadence.
    3. data.json in the public repo — keeps a downloaded or self-hosted copy
       live with no server work at all.
@@ -2449,9 +2499,6 @@ async function pollLive() {
   };
 
   if (consider(await readFrame(DATA_URLS[0]))) { publish(best); lastPoll = performance.now(); return; }
-
-  await pollFromApi();
-  if (liveOK && liveSource === 'api') { lastPoll = performance.now(); return; }
 
   for (let i = 1; i < DATA_URLS.length; i++) {
     if (consider(await readFrame(DATA_URLS[i]))) break;
@@ -2500,52 +2547,11 @@ async function readFrame(url) {
   } catch (e) { liveWhy = liveWhy || (remote ? 'noremote' : 'nofile'); return null; }
 }
 
-async function pollFromApi() {
-  try {
-    const nowStr = dkNow();
-    /* DayAheadPrices publishes tomorrow's market intervals, so an unbounded
-       query returns only future MTUs. Ask for a window around now instead. */
-    const priceUrl = API + 'DayAheadPrices?start=' + dkClock(-5) +
-      '&end=' + dkClock(1) + '&limit=400&sort=TimeDK%20DESC';
-    const [psr, dap] = await Promise.all([
-      fetch(API + 'PowerSystemRightNow?limit=1&sort=Minutes1DK%20DESC').then(r => r.json()),
-      fetch(priceUrl).then(r => r.json())
-    ]);
-    const r = psr.records[0];
-    const p = {};
-    PK.forEach(k => p[k] = null);
-    // records arrive newest-first: take the newest interval at or before now
-    for (const rec of dap.records) {
-      if (rec.TimeDK.slice(0, 16) > nowStr) continue;
-      if (PK.includes(rec.PriceArea) && p[rec.PriceArea] === null) {
-        p[rec.PriceArea] = Math.round(rec.DayAheadPriceEUR * 10) / 10;
-      }
-    }
-    // clock-skew fallback: if nothing resolved, use the newest available
-    if (PK.every(k => p[k] === null)) {
-      for (const rec of dap.records) {
-        if (PK.includes(rec.PriceArea) && p[rec.PriceArea] === null) {
-          p[rec.PriceArea] = Math.round(rec.DayAheadPriceEUR * 10) / 10;
-        }
-      }
-    }
-    const x = {};
-    XK.forEach(k => x[k] = Math.round(r['Exchange_' + (k === 'BH_SE' ? 'Bornholm_SE' : k)]));
-    liveFrame = {
-      time: fmtDK(new Date(r.Minutes1DK + 'Z')),
-      co2: Math.round(r.CO2Emission),
-      wOff: Math.round(r.OffshoreWindPower), wOn: Math.round(r.OnshoreWindPower),
-      sol: Math.round(r.SolarPower), cen: Math.round(r.ProductionGe100MW), dec: Math.round(r.ProductionLt100MW),
-      x, sum: Math.round(r.Exchange_Sum), p, live: true
-    };
-    liveMeasured = Date.parse(r.Minutes1UTC + 'Z') || Date.now();
-    liveSource = 'api';
-    liveOK = true; liveErr = null;
-  } catch (e) {
-    liveOK = false; liveErr = e.message || 'network';
-  }
-}
-
+/* There is no browser-side call to api.energidataservice.dk any more - not
+   directly and not through a reverse proxy. Energinet asks sites to download
+   the data and serve it themselves, so every number here comes from a file
+   the update pipeline wrote (data.json, hist.json, prices.json) or from the
+   gridkort.dk Worker, which is a server. */
 
 /* ---------------------------------------------------------- */
 
@@ -2598,8 +2604,8 @@ const I18N = {
     sparkPris: 'elpris (DK1)', sparkFor: 'forbrug', sparkVind: 'vind', sparkSol: 'sol', sparkNeg: 'negativ pris',
     vsMed: 'typisk {v}', low: 'lav', high: 'høj', mid: 'normal', veryLow: 'meget lav', veryHigh: 'meget høj',
     vsOver: '{p} % over gennemsnittet (30 dage)', vsUnder: '{p} % under gennemsnittet (30 dage)',
-    vsNear: 'omkring gennemsnittet (30 dage)', vsNeg: 'under nul — strøm i overskud', pUnit: 'kr./kWh',
-    spotNote: 'spotpris (engros) · uden afgifter, moms og transport',
+    vsNear: 'omkring gennemsnittet (30 dage)', vsNeg: 'under nul — strøm i overskud', pUnit: 'kr./kWh', pConv: 'omregnet 7,46',
+    spotNote: 'spotpris, før nettarif, afgifter og moms',
     co2Tip: 'CO₂ for den strøm, der bruges i Danmark — inkl. import',
     cenTip: 'Store kraftværker (≥ 100 MW)', decTip: 'Mindre, lokale værker (< 100 MW)',
     wowNote: 'Forbrugere fik penge for at bruge strøm — det skete i {n} timer på 30 dage',
@@ -2653,8 +2659,9 @@ const I18N = {
     kProvOff: ['30 DAGES VIRKELIGHED', 'Du ser de seneste 30 dages målte data fra det danske elsystem — indlejret i denne side'],
     kHomes: '≈ strøm til {n} mio. hjem', kEu: 'EU-snit ≈ {e} g',
     kSrc: 'Energinet Energi Data Service · åbne data',
-    kPriceTag: 'KOMMENDE PRISER',
-    kPrice: ['{v} kr./kWh', 'Billigste 3 timer — Vest {w} · Øst {e} ({ev} kr./kWh) · spotpris, før nettarif, afgifter og moms'],
+    kPriceTag: 'KOMMENDE PRISER · {area} · BILLIGSTE 3 TIMER FRA NU', kWest: 'VEST (DK1)', kEast: 'ØST (DK2)',
+    kWestL: 'Vest (DK1)', kEastL: 'Øst (DK2)',
+    kPrice: ['{v} kr./kWh', '{w} · {other}: {e}, {ev} kr./kWh · spotpris, før nettarif, afgifter og moms'],
     kEv: {
       'Peak wind': ['{v} MW vind', '{date} — den kraftigste vindproduktion i de sidste 30 dage'],
       'Peak solar': ['{v} MW sol', '{date} — solens største bidrag i vinduet'],
@@ -2692,8 +2699,8 @@ const I18N = {
     sparkPris: 'price (DK1)', sparkFor: 'consumption', sparkVind: 'wind', sparkSol: 'solar', sparkNeg: 'negative price',
     vsMed: 'typical {v}', low: 'low', high: 'high', mid: 'normal', veryLow: 'very low', veryHigh: 'very high',
     vsOver: '{p}% above the 30-day average', vsUnder: '{p}% below the 30-day average',
-    vsNear: 'around the 30-day average', vsNeg: 'below zero — surplus power', pUnit: 'DKK/kWh',
-    spotNote: 'wholesale spot price · excl. taxes, VAT and grid fees',
+    vsNear: 'around the 30-day average', vsNeg: 'below zero — surplus power', pUnit: 'DKK/kWh', pConv: 'converted at 7.46',
+    spotNote: 'spot price, before grid tariff, taxes and VAT',
     co2Tip: 'CO₂ of the power consumed in Denmark — incl. imports',
     cenTip: 'Large power plants (≥ 100 MW)', decTip: 'Smaller local plants (< 100 MW)',
     wowNote: 'Consumers were paid to use power — it happened for {n} hours in 30 days',
@@ -2737,8 +2744,9 @@ const I18N = {
     kProvOff: ['30 DAYS OF REALITY', 'You are watching the measured last 30 days of the Danish power system — embedded in this page'],
     kHomes: '≈ power for {n} million homes', kEu: 'EU average ≈ {e} g',
     kSrc: 'Energinet Energy Data Service · open data',
-    kPriceTag: 'UPCOMING PRICES',
-    kPrice: ['{v} DKK/kWh', 'Cheapest 3 hours — West {w} · East {e} ({ev} DKK/kWh) · spot price, before grid tariff, taxes and VAT'],
+    kPriceTag: 'UPCOMING PRICES · {area} · CHEAPEST 3 HOURS AHEAD', kWest: 'WEST (DK1)', kEast: 'EAST (DK2)',
+    kWestL: 'West (DK1)', kEastL: 'East (DK2)',
+    kPrice: ['{v} DKK/kWh', '{w} · {other}: {e}, {ev} DKK/kWh · spot price, before grid tariff, taxes and VAT'],
     kEv: {
       'Peak wind': ['{v} MW of wind', '{date} — the strongest wind output of the last 30 days'],
       'Peak solar': ['{v} MW of solar', "{date} — the sun's biggest contribution in the window"],
@@ -2999,17 +3007,23 @@ function paintHUD(f) {
     putStyle(HUD.netV, 'color', net < -20 ? 'var(--exp)' : net > 20 ? 'var(--imp)' : 'var(--dim)');
     putText(HUD.netS, net < -20 ? T('exp') : net > 20 ? T('imp') : T('bal'));
 
-    // kr./kWh primary (fixed 7,46), €/MWh secondary, explicit 30-day comparison.
+    // kr./kWh primary. Live: the running quarter from prices.json, DayAheadPriceDKK / 1000 -
+    // the same slot and the same number as the strip below, with the quarter named under it.
+    // Replay, or no prices.json: the frame's €/MWh at the fixed 7,46, and the line under the
+    // number says so. The 30-day comparison is against the history, which is in €/MWh.
     // Five characters (a negative price, 10 kr. and up) put both units under the number.
-    const kr = HUD.prices.map(t => fmt(dkk(f.p[t.a]), 2));
-    HUD.tiles.classList.toggle('plong', kr.some(s => s.length > 4));
+    const quarters = HUD.prices.map(t => S.mode === 'live' ? spotNow(t.a) : null);
+    const krs = HUD.prices.map((t, i) => quarters[i] ? quarters[i].kr : dkk(f.p[t.a]));
+    const krTxt = krs.map(v => fmt(v, 2));
+    HUD.tiles.classList.toggle('plong', krTxt.some(s => s.length > 4));
     HUD.prices.forEach((t, i) => {
-      const p = f.p[t.a], m = MED[t.k], avg = AVG[t.k];
-      putHTML(t.v, p === null ? '—' : `${kr[i]}<i>${T('pUnit')}</i>`);
-      putStyle(t.v, 'color', p === null ? 'var(--dim)' : p < 0 ? 'var(--exp)' : p > m * 1.8 ? 'var(--bad)' : 'var(--ink)');
-      putText(t.e, p === null ? ' ' : `${fmt(p, 1)} €/MWh`);   // nbsp keeps tile heights equal
+      const q = quarters[i], v = krs[i], eur = f.p[t.a];
+      const m = MED[t.k] * 7.46 / 1000, avg = AVG[t.k] * 7.46 / 1000;
+      putHTML(t.v, v === null ? '—' : `${krTxt[i]}<i>${T('pUnit')}</i>`);
+      putStyle(t.v, 'color', v === null ? 'var(--dim)' : v < 0 ? 'var(--exp)' : v > m * 1.8 ? 'var(--bad)' : 'var(--ink)');
+      putText(t.e, q ? `${q.from}–${q.to}` : eur === null ? ' ' : `${fmt(eur, 1)} €/MWh · ${T('pConv')}`);   // nbsp keeps tile heights equal
       // ">100 % below average" reads as broken maths — negative prices get plain words
-      putText(t.s, p === null ? '—' : p < 0 ? T('vsNeg') : vsAvg(p, avg));
+      putText(t.s, v === null ? '—' : v < 0 ? T('vsNeg') : vsAvg(v, avg));
     });
 
     HUD.links.forEach(r => {
@@ -3036,7 +3050,7 @@ function paintHUD(f) {
     // key numbers: the mini strip on a narrow desktop, the closed sheet on a phone
     const miniHTML =
       `<span>⚡ <b>${fmt(total)}</b> MW</span><span>CO₂ <b>${fmt(co2)}</b> g/kWh</span>` +
-      `<span>DK1 <b>${f.p.DK1 === null ? '—' : fmt(dkk(f.p.DK1), 2)}</b> ${T('pUnit')}</span>` +
+      `<span>DK1 <b>${krTxt[0]}</b> ${T('pUnit')}</span>` +
       `<span style="color:${net < -20 ? 'var(--exp)' : net > 20 ? 'var(--imp)' : 'var(--dim)'}">${net < -20 ? '→ ' : net > 20 ? '← ' : ''}${fmt(Math.abs(net))} MW</span>`;
     putHTML(HUD.mini, miniHTML);
     putHTML(HUD.sheetSum, miniHTML);
@@ -3207,7 +3221,9 @@ const SPOT_URLS = [
 const SPOT_DEADLINE_MS = 4000, SPOT_REFRESH_MS = 30 * 60000;
 const spot = { data: null, mark: false, tried: false, fetchedAt: 0, slot: null };
 const ST = k => SPOT.I18N[LANG === 'en' ? 'en' : 'da'][k];
-const spotEl = { head: $('#spotHead .k'), note: $('#spotHead .n'), btn: $('#cheapBtn'), src: $('#spotSrc'), strip: $('#spotStrip'), sum: $('#spotSum') };
+const spotEl = { box: $('#spot'), title: $('#spotTitle'), head: $('#spotTitle .k'), note: $('#spotTitle .n'), btn: $('#cheapBtn'), src: $('#spotSrc'), strip: $('#spotStrip'), sum: $('#spotSum') };
+/* ?udenpriser: behave as if no prices.json existed - the fallback state of the strip and the cards, for a screenshot */
+const SPOT_OFF = QP.has('udenpriser');
 
 async function fetchSpot() {
   for (const url of SPOT_URLS) {
@@ -3228,7 +3244,7 @@ async function fetchSpot() {
   return null;
 }
 async function spotLoad() {
-  const d = await fetchSpot();
+  const d = SPOT_OFF ? null : await fetchSpot();
   spot.tried = true; spot.fetchedAt = Date.now();
   if (d) spot.data = d;          // a failed refresh keeps the last good series
   spotRender();
@@ -3243,14 +3259,30 @@ function spotRender() {
   if (!w) return;   // hidden (kiosk, closed sheet) - drawn again when it is shown
   if (!spot.data && !spot.tried) { putHTML(spotEl.strip, ''); return; }   // still fetching: no note yet
   const o = spotOpts(w, h, spot.mark, 1);
+  // on a desktop the credit sits over the strip's bottom-right corner (see #spotSrc): keep it free
+  if (getComputedStyle(spotEl.src).position === 'absolute') o.rightPad = spotEl.src.offsetWidth + 10;
   spot.slot = spot.data ? SPOT.slotAt(spot.data, o.now) : null;
   putHTML(spotEl.strip, SPOT.render(spot.data, o));
   const show = !!spot.data && spot.mark;
   putHTML(spotEl.sum, show ? SPOT.summary(spot.data, o) : '');
   spotEl.sum.hidden = !show;
+  spotEl.box.classList.toggle('marked', show);
 }
-/* the kiosk beat: the same strip, larger, windows always marked */
+/* the running quarter's price for the DK1/DK2 cards: { kr, from, to } from
+   prices.json, or null when the file is missing, stale or has a gap there -
+   paintHUD then falls back to the live frame's €/MWh at 7,46 and says so */
+function spotNow(area) {
+  const d = spot.data;
+  if (!d) return null;
+  const i = SPOT.slotAt(d, Date.now());
+  if (i < 0 || i >= d.n || d.p[area][i] === null) return null;
+  const t0 = Date.parse(d.t0), step = d.step * 60000;
+  return { kr: SPOT.kr(d.p[area][i]), from: SPOT.dkParts(t0 + i * step).hm, to: SPOT.dkParts(t0 + (i + 1) * step).hm };
+}
+/* the kiosk beat: the same strip, larger, windows always marked, plus the tag
+   naming the area and window the headline belongs to and the credit line */
 const spotKioskSVG = () => SPOT.render(spot.data, spotOpts(1400, 210, true, 2.2));
+const spotKioskExtra = () => ({ tag: T('kPriceTag').replace('{area}', T(spotWin3('DK1') ? 'kWest' : 'kEast')), credit: ST('src') });
 const spotWin3 = a => spot.data ? SPOT.windows(spot.data, a, Date.now(), [3])[0] : null;
 const spotReady = () => !!(spotWin3('DK1') || spotWin3('DK2'));
 spotEl.btn.onclick = () => { spot.mark = !spot.mark; setPressed(spotEl.btn, spot.mark); spotRender(); };
@@ -3543,7 +3575,7 @@ const kHomes = mw => mw > 150 ? ' · ' + T('kHomes').replace('{n}', fmt(mw / (AV
 
 /* headline numbers count up when a caption appears; negative values show teal */
 const kNum = (n, d = 0) => `<span class="kv"${n < 0 ? ' style="color:var(--exp)"' : ''} data-v="${n}" data-d="${d}">${fmt(n, d)}</span>`;
-function kioskCaption(kh, ks, mode, graph) {
+function kioskCaption(kh, ks, mode, graph, extra) {
   const el = $('#kioskCap');
   el.classList.remove('show');
   setTimeout(() => {
@@ -3551,11 +3583,12 @@ function kioskCaption(kh, ks, mode, graph) {
     const kk = el.querySelector('.kk');
     kk.className = 'kk ' + (mode === 'story' || mode === 'clip' ? mode : liveOK ? 'live' : 'last');
     el.classList.toggle('clip', mode === 'clip');   // swapped while faded out, so the layout change is never seen
-    kk.querySelector('.kt').textContent = T(tag);
+    kk.querySelector('.kt').textContent = (extra && extra.tag) || T(tag);
     el.querySelector('.kh').innerHTML = kh;
     el.querySelector('.ks').innerHTML = ks;
     el.classList.toggle('price', mode === 'price');
     el.querySelector('.kg').innerHTML = graph || '';
+    el.querySelector('.kc').textContent = (extra && extra.credit) || '';
     el.classList.add('show');
     el.querySelectorAll('.kv').forEach(sp =>
       kCounts.push({ sp, target: +sp.dataset.v, dec: +sp.dataset.d, t0: performance.now() }));
@@ -3606,13 +3639,16 @@ function liveCaption(step, f) {
     return [tpl[0].replace('{v}', kNum(mw)), tpl[1].replace('{name}', L ? L.n : k) + kHomes(mw)];
   }
   if (which === KIOSK_PRICE_STEP) {
-    // cheapest three hours ahead: headline on the west, both areas in the line
+    // cheapest three hours ahead. The headline is the west window (east when
+    // the west is missing); the tag above it names that area and window, the
+    // line under it gives its hours and then the other area.
     const L = SPOT.I18N[LANG === 'en' ? 'en' : 'da'], w = spotWin3('DK1'), e = spotWin3('DK2');
     const span = x => x ? SPOT.spanLabel(x, Date.now(), L) : '—';
     const price = x => x ? fmt(SPOT.kr(x.avg), 2) : '—';
+    const hero = w || e, other = w ? e : null;
     const tpl = T('kPrice');
-    return [tpl[0].replace('{v}', (w || e) ? kNum(SPOT.kr((w || e).avg), 2) : '—'),
-      tpl[1].replace('{w}', span(w)).replace('{wv}', price(w)).replace('{e}', span(e)).replace('{ev}', price(e))];
+    return [tpl[0].replace('{v}', kNum(SPOT.kr(hero.avg), 2)),
+      tpl[1].replace('{w}', span(hero)).replace('{other}', T(w ? 'kEastL' : 'kWestL')).replace('{e}', span(other)).replace('{ev}', price(other))];
   }
   // provenance beat — honesty evaluated at render time, not cycle start
   if (liveOK && lastPoll) {
@@ -3767,7 +3803,7 @@ function kioskTick(now, f) {
     // captions must use the TARGET frame, not the smoothed display frame —
     // right after a story beat the smoothed frame still holds stale values
     const tf = targetFrame();
-    kioskCaption(...liveCaption(stepNow, tf), isPrice ? 'price' : 'live', isPrice ? spotKioskSVG() : '');
+    kioskCaption(...liveCaption(stepNow, tf), isPrice ? 'price' : 'live', isPrice ? spotKioskSVG() : '', isPrice ? spotKioskExtra() : null);
     const ms = isPrice ? KIOSK_PRICE_MS : KIOSK_LIVE_MS;
     kApplyShot(kShotLive(stepNow, tf), now, ms);
     kiosk.step++; kiosk.sinceStory++;

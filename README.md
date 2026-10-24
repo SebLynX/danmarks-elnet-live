@@ -90,8 +90,14 @@ pris. Det er feltet `DayAheadPriceDKK` (DKK/MWh) delt med 1000. På engelsk (`?l
 hedder knappen *When is it cheapest?*.
 
 I kiosk-tilstand (`?kiosk` eller tasten K) er tidslinjekortet skjult; der viser kiosken i
-stedet den samme stribe med vinduerne markeret som et af sine faste indslag, med den
-billigste 3-timers pris som overskrift.
+stedet den samme stribe med vinduerne markeret som et af sine faste indslag: et kort med
+den billigste 3-timers pris i Vestdanmark som overskrift, mærket med område og vindue,
+striben under og kildeangivelsen nederst.
+
+Vinduerne er mærket »1 t«, »3 t« og »8 t« i en bane over søjlerne, skraveret som deres
+bånd og skubbet til højre, hvis to ellers ville røre hinanden — to mærkater deler aldrig
+plads. På en computer tager teksten med tidsrummene titlens plads i striben, mens knappen
+er slået til, så kortet under tidslinjen ikke vokser og ikke skubber til de andre kort.
 
 **Data:** Browseren kalder aldrig Energinet for priserne. `prices.js` henter datasættet
 `DayAheadPrices` (15 minutters opløsning; det erstattede `Elspotprices`, som stoppede
@@ -106,9 +112,22 @@ slået fra, og resten af kortet virker som før. Tidsaksen er UTC i filen og omr
 dansk tid pr. kvarter, så skiftet til vintertid (25-10-2026 har 25 timer) ikke
 forskyder noget.
 
-**Licens:** data fra Energinet under CC BY 4.0. Striben og info-panelet skriver
-»Kilde: Energinet (www.energidataservice.dk)« og at tallene er bearbejdet (omregnet fra
-DKK/MWh til kr./kWh og vist pr. kvarter). Energinet står ikke bag kortet, se
+**Priskortene DK1 Vest og DK2 Øst** viser samme tal: det igangværende kvarter fra
+`prices.json`, `DayAheadPriceDKK` delt med 1000, med kvarteret skrevet under tallet. Så
+står der det samme kr./kWh i kortet og i striben for samme kvarter. Mangler
+`prices.json` — eller under afspilning af historikken, som kun findes i €/MWh — falder
+kortene tilbage på €/MWh omregnet med fastkurs 7,46, og linjen under tallet siger
+»omregnet 7,46«. Mærkatet er det samme overalt: *spotpris, før nettarif, afgifter og moms*.
+
+**Fallback-tilstanden kan fremkaldes** med `?udenpriser` i adressen
+(`https://el.gridkort.dk/?udenpriser`): kortet lader som om `prices.json` ikke findes, så
+striben viser sin ene linje, knappen er slået fra, og priskortene bruger omregningen.
+Samme tilstand opstår af sig selv, hvis filen mangler, ikke kan læses eller slutter i
+fortiden.
+
+**Licens:** data fra Energinet under CC BY 4.0. Striben, kiosk-indslaget og info-panelet
+skriver »Kilde: Energinet (www.energidataservice.dk)« og at tallene er bearbejdet
+(omregnet fra DKK/MWh til kr./kWh og vist pr. kvarter). Energinet står ikke bag kortet, se
 uafhængighedslinjen i signaturforklaringen.
 
 **Test:** `node --test` kører testene i `test/` — udregningen af de billigste vinduer,
@@ -181,55 +200,35 @@ Kortet leder efter data i denne rækkefølge:
 | Kilde | Hvornår den bruges |
 |---|---|
 | `api.gridkort.dk` (Cloudflare Worker) | Først, altid. Svarer den med en måling under 8 min, bruges den |
-| `/api/` på samme host | Hvis der er en reverse proxy sat op |
 | `data.json` i samme mappe som siden | Hvis filen findes og målingen er under 3 timer gammel |
 | `data.json` på dette repos GitHub Pages | Hvis ingen af delene svarer |
 | Indlejret 30-dages historik | Hvis alt andet fejler — mærket OFFLINE |
 
 Uploader du kun `index.html`, virker kortet med det samme og henter data herfra. Vil du
-være helt uafhængig af GitHub, skal du selv holde `data.json` frisk. Der er to veje.
+være helt uafhængig af GitHub, skal du selv holde `data.json` og `prices.json` friske.
 
-### A. Reverse proxy — den bedste, hvis du har en rigtig webserver
+Browseren kalder aldrig `api.energidataservice.dk` — hverken direkte eller gennem en
+reverse proxy. Energinet beder om, at sitet selv henter data og serverer dem, så den
+tidligere `/api/`-mulighed er taget ud: alle tal kommer fra filer, et script har skrevet.
 
-Send `/api/` videre til API'et. Så opdaterer kortet sig selv hvert minut, der skrives
-ingen filer, og der er ingen nøgle eller token at passe på.
+### Cron-job
 
-```nginx
-location /api/ {
-    proxy_pass https://api.energidataservice.dk/;
-    proxy_set_header Host api.energidataservice.dk;
-    proxy_set_header Origin "";      # vigtigt: uden denne kommer der tomme svar
-}
-```
-
-**IIS:** ARR/URL Rewrite til `https://api.energidataservice.dk/{R:1}`, og tøm `Origin` på
-den udgående forespørgsel.
-**Azure Front Door / CDN:** en route `/api/*` med `api.energidataservice.dk` som origin.
-
-Test bagefter:
+`poll.js` skriver `data.json`, `prices.js` skriver `prices.json`. Læg filerne ved siden
+af `index.html`.
 
 ```
-curl -s -o /dev/null -w '%{size_download}\n' "https://DIN-HOST/api/dataset/PowerSystemRightNow?limit=1"
-```
-
-Et tal over 0 betyder, at det virker. Får du 0, sendes `Origin` stadig med videre.
-
-### B. Cron-job — hvis der ikke er en proxy
-
-`poll.js` skriver `data.json`. Læg filen ved siden af `index.html`.
-
-```
-*/15 * * * * /usr/bin/node /sti/til/poll.js /sti/til/webroot/data.json >> /var/log/elnet-poll.log 2>&1
+*/15 * * * * /usr/bin/node /sti/til/poll.js   /sti/til/webroot/data.json   >> /var/log/elnet-poll.log 2>&1
+*/15 * * * * /usr/bin/node /sti/til/prices.js /sti/til/webroot/prices.json >> /var/log/elnet-poll.log 2>&1
 ```
 
 Krav: **Node.js 18 eller nyere** (scriptet bruger indbygget `fetch`). Ingen `npm install`,
 ingen pakker. Filen er selvstændig. På Windows kan Opgavestyring køre samme kommando.
 
-Scriptet returnerer exit-kode 1 ved fejl og skriver i så fald ikke filen, så en mislykket
-kørsel efterlader den forrige `data.json` urørt.
+Scripterne returnerer exit-kode 1 ved fejl og skriver i så fald ikke filen, så en mislykket
+kørsel efterlader den forrige fil urørt.
 
-**Cache:** server `data.json` med `Cache-Control: no-store`. Ellers kan et mellemliggende
-CDN nå at gemme gårsdagens tal.
+**Cache:** server `data.json` og `prices.json` med `Cache-Control: no-store`. Ellers kan et
+mellemliggende CDN nå at gemme gårsdagens tal.
 
 ---
 
