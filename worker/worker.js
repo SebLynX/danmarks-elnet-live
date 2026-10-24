@@ -1,11 +1,9 @@
 /* ============================================================
    gridkort-api  ->  https://api.gridkort.dk/elnet/now.json
-                     https://api.gridkort.dk/elnet/prices.json
    ------------------------------------------------------------
    One fresh "right now" frame for Danmarks Elnet, in exactly the
    shape poll.js writes to data.json, so the map reads it with the
-   code it already has - and the day-ahead quarters for DK1 and DK2
-   in the shape prices.js writes to prices.json (see buildPrices).
+   code it already has.
 
    Why a Worker at all: api.energidataservice.dk answers every
    request that carries an Origin header (= every browser request)
@@ -102,69 +100,18 @@ async function buildFrame(ctx) {
     source: 'Energinet Energi Data Service · PowerSystemRightNow + DayAheadPrices (via api.gridkort.dk)', frame };
 }
 
-/* ---- /elnet/prices.json: the quarters ahead ----
-   DK1 and DK2 day-ahead prices from the start of today (Danish time) to the
-   end of what Energinet has published, in the columnar shape prices.js
-   writes, so the map reads either with the same code. Cached 15 min: the
-   series changes once a day, around 13:00 CET. */
-const AREAS = ['DK1', 'DK2'];
-const STEP = 15;   // minutes - the dataset's resolution (PT15M)
-const dkDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Copenhagen', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-
-/* API records -> the columnar series above. Identical to compactPrices() in
-   prices.js, where it is documented; test/prices.test.js compares the two, so
-   a change goes in both places. */
-function compactPrices(records, areas = AREAS, step = STEP) {
-  const stepMs = step * 60000;
-  const utc = s => Date.parse(/Z$/.test(s) ? s : s + 'Z');
-  const rows = (records || []).filter(r => r && areas.includes(r.PriceArea) &&
-    typeof r.TimeUTC === 'string' && Number.isFinite(utc(r.TimeUTC)) && Number.isFinite(r.DayAheadPriceEUR));
-  if (!rows.length) throw new Error('no usable price records');
-  let t0 = Infinity, tEnd = -Infinity;
-  for (const r of rows) { const t = utc(r.TimeUTC); if (t < t0) t0 = t; if (t > tEnd) tEnd = t; }
-  const n = Math.round((tEnd - t0) / stepMs) + 1;
-  if (n < 1 || n > 4 * 24 * 60 / step) throw new Error('series spans ' + n + ' slots - refusing');
-  const p = {};
-  areas.forEach(a => { p[a] = new Array(n).fill(null); });
-  for (const r of rows) {
-    const k = (utc(r.TimeUTC) - t0) / stepMs;
-    if (!Number.isInteger(k)) continue;
-    const v = Math.round(r.DayAheadPriceEUR * 10);
-    p[r.PriceArea][k] = v === 0 ? 0 : v;   // never -0, it serialises oddly
-  }
-  return { t0: new Date(t0).toISOString().slice(0, 19) + 'Z', step, n, p };
-}
-async function buildPrices() {
-  const filter = encodeURIComponent(JSON.stringify({ PriceArea: AREAS }));
-  const j = await getJSON(`${API}DayAheadPrices?start=${dkDate()}T00:00&filter=${filter}` +
-    '&columns=TimeUTC,PriceArea,DayAheadPriceEUR&sort=TimeUTC%20ASC&limit=1000');
-  const d = compactPrices(j.records);
-  /* same gate as prices.js: both areas with at least six hours, horizon ahead of now */
-  for (const a of AREAS) {
-    const have = d.p[a].filter(v => v !== null).length;
-    if (have < 6 * 60 / STEP) throw new Error(a + ': only ' + have + ' quarters');
-  }
-  if (!(Date.parse(d.t0) + d.n * STEP * 60000 > Date.now())) throw new Error('series ends in the past');
-  return { generated: new Date().toISOString(), source: 'Energinet Energi Data Service · DayAheadPrices (via api.gridkort.dk)', ...d };
-}
-
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url), h = cors(req.headers.get('Origin'));
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...h, 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '86400' } });
     if (req.method !== 'GET') return new Response('GET only', { status: 405, headers: h });
     if (url.pathname === '/') return new Response('gridkort.dk data service. Energinet Energi Data Service, cached. Map: https://el.gridkort.dk/\n', { headers: { ...h, 'Content-Type': 'text/plain; charset=utf-8' } });
-    /* two routes, one cache name and TTL each; a failure is cached briefly
-       under the same name so a hiccup at Energinet is not met with retries */
-    const route = url.pathname === '/elnet/now.json' ? ['elnet-now', FRAME_TTL, () => buildFrame(ctx)]
-      : url.pathname === '/elnet/prices.json' ? ['elnet-prices-ahead', PRICE_TTL, buildPrices] : null;
-    if (!route) return new Response('Not found', { status: 404, headers: h });
-    const [name, ttl, make] = route;
+    if (url.pathname !== '/elnet/now.json') return new Response('Not found', { status: 404, headers: h });
     let out, status = 200;
-    try { out = await cached(ctx, name, ttl, make); }
+    try { out = await cached(ctx, 'elnet-now', FRAME_TTL, () => buildFrame(ctx)); }
     catch (e) {
       out = { error: String(e.message || e) }; status = 502;
-      ctx.waitUntil(caches.default.put(new Request('https://api.gridkort.dk/__cache/' + name),
+      ctx.waitUntil(caches.default.put(new Request('https://api.gridkort.dk/__cache/elnet-now'),
         new Response(JSON.stringify(out), { headers: { 'Cache-Control': 'public, max-age=' + FAIL_TTL } })));
     }
     if (out && out.error) status = 502;

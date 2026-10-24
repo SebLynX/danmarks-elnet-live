@@ -246,6 +246,7 @@ button{font-family:inherit}
 #spot{display:flex;flex-direction:column;gap:7px;padding-top:9px;border-top:1px solid var(--hairline)}
 #spotHead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 #spotHead .k{font-size:var(--fs-micro);letter-spacing:.13em;text-transform:uppercase;color:var(--dimmer);font-weight:600}
+#spotHead .n{font-size:var(--fs-micro);color:var(--dimmer)}
 #spotHead a{margin-left:auto;font-size:var(--fs-micro);color:var(--dimmer);text-decoration:none}
 #spotHead a:hover{color:var(--ink);text-decoration:underline}
 #cheapBtn[disabled]{opacity:.45;cursor:default}
@@ -797,9 +798,10 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
          strip as a caption beat instead. Texts are set by spotRender(). -->
     <div id="spot">
       <div id="spotHead">
-        <span class="k">Kommende spotpriser</span>
+        <span class="k">Kommende elpriser</span>
+        <span class="n">spotpris, før nettarif, afgifter og moms</span>
         <button type="button" id="cheapBtn" class="chip" aria-pressed="false" disabled>Hvornår er det billigst?</button>
-        <a id="spotSrc" href="https://www.energidataservice.dk/tso-electricity/DayAheadPrices" target="_blank" rel="noopener">Kilde: Energi Data Service (Energinet) · åbne data</a>
+        <a id="spotSrc" href="https://www.energidataservice.dk/tso-electricity/DayAheadPrices" target="_blank" rel="noopener">Kilde: Energinet (www.energidataservice.dk), CC BY 4.0 · tallene er bearbejdet (omregnet til kr./kWh)</a>
       </div>
       <div id="spotStrip"></div>
       <div id="spotSum" hidden></div>
@@ -862,9 +864,11 @@ const BUILT="2026-10-21T16:29:14.289Z";</script>
    billigst?"). Pure: no DOM, no page state, no other globals, so
    test/spot.test.js runs exactly this block under Node.
 
-   Data (prices.json from prices.js, or /elnet/prices.json from the
-   Worker): { t0: UTC start of slot 0 "YYYY-MM-DDTHH:mm:ssZ", step: 15
-   (minutes), n, p: { DK1: [EUR/MWh × 10 | null], DK2: [...] } }.
+   Data (prices.json, written by prices.js in the update pipeline - the
+   browser never calls Energinet): { t0: UTC start of slot 0
+   "YYYY-MM-DDTHH:mm:ssZ", step: 15 (minutes), n, p: { DK1: [DKK/MWh |
+   null], DK2: [...] } }. DKK/MWh is the API's DayAheadPriceDKK rounded to
+   whole kroner; kr./kWh is that value / 1000.
    The axis is UTC on purpose: Danish wall-clock jumps on the DST days
    (25-10-2026 has 25 hours). Labels are made per slot with Intl.
    ============================================================ */
@@ -873,16 +877,16 @@ const SPOT = (() => {
   const HOURS = [1, 3, 8];
   const I18N = {
     da: {
-      head: 'Kommende spotpriser', btn: 'Hvornår er det billigst?',
-      src: 'Kilde: Energi Data Service (Energinet) · åbne data',
+      head: 'Kommende elpriser', note: 'spotpris, før nettarif, afgifter og moms', btn: 'Hvornår er det billigst?',
+      src: 'Kilde: Energinet (www.energidataservice.dk), CC BY 4.0 · tallene er bearbejdet (omregnet til kr./kWh)',
       none: 'Kommende priser kunne ikke hentes lige nu — resten af kortet virker som før',
       now: 'nu', tom: 'i morgen', h: 't', unit: 'kr./kWh', cheapest: 'billigst', noArea: 'ingen data',
       area: { DK1: 'DK1 Vest', DK2: 'DK2 Øst' },
       aria: 'Kommende spotpriser for DK1 og DK2 i kvarterer'
     },
     en: {
-      head: 'Upcoming spot prices', btn: 'When is it cheapest?',
-      src: 'Source: Energi Data Service (Energinet) · open data',
+      head: 'Upcoming power prices', note: 'spot price, before grid tariff, taxes and VAT', btn: 'When is it cheapest?',
+      src: 'Source: Energinet (www.energidataservice.dk), CC BY 4.0 · figures processed (converted to DKK/kWh)',
       none: 'Upcoming prices could not be fetched right now — the rest of the map works as before',
       now: 'now', tom: 'tomorrow', h: 'h', unit: 'DKK/kWh', cheapest: 'cheapest', noArea: 'no data',
       area: { DK1: 'DK1 West', DK2: 'DK2 East' },
@@ -891,8 +895,8 @@ const SPOT = (() => {
   };
 
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-  /* €/MWh → kr./kWh at the fixed 7,46 DKK/EUR the price tiles use (dkk() in the page) */
-  const dkk = eur => { const r = Math.round(eur * 0.746) / 100; return r === 0 ? 0 : r; };
+  /* DKK/MWh → kr./kWh (÷ 1000), rounded to whole øre; never -0 */
+  const kr = v => { const r = Math.round(v / 10) / 100; return r === 0 ? 0 : r; };
   const NUMF = {};
   const fmt = (n, d, lang) => {
     if (n === null || n === undefined || !Number.isFinite(n)) return '—';
@@ -963,10 +967,10 @@ const SPOT = (() => {
     }
     return best && { i: best.i, len, avg: best.sum / len };
   }
-  /* The 1, 3 and 8 hour windows for one area, prices in EUR/MWh. One entry
+  /* The 1, 3 and 8 hour windows for one area, prices in DKK/MWh. One entry
      per requested length, null where the series ahead is too short. */
   function windows(d, area, now, hours) {
-    const prices = d.p[area].map(v => v === null ? null : v / 10);
+    const prices = d.p[area];
     const from = firstFuture(d, now), perHour = 60 / d.step;
     return (hours || HOURS).map(h => {
       const w = cheapestWindow(prices, from, h * perHour);
@@ -981,7 +985,7 @@ const SPOT = (() => {
 
   /* Inline SVG, one row per area, from two hours before the running hour to
      the end of the series. opts: { w, h, lang, now, mark, hi, scale }. w/h in CSS
-     px. `mark` draws the cheapest windows. `hi` is the EUR/MWh above which a
+     px. `mark` draws the cheapest windows. `hi` is the DKK/MWh above which a
      quarter is drawn as expensive (the page passes 1.8 × the 30-day DK1
      median, the tiles' own threshold). `scale` enlarges type and gutters for
      the kiosk. Colours come from the page's CSS variables, so the strip
@@ -1006,7 +1010,7 @@ const SPOT = (() => {
     const sw = (W - gx) / n, bw = Math.max(0.8, sw - Math.min(1, sw * 0.18));
     const X = i => gx + (i - i0) * sw;
     const vals = [];
-    AREAS.forEach(a => { for (let i = i0; i < d.n; i++) if (d.p[a][i] !== null) vals.push(d.p[a][i] / 10); });
+    AREAS.forEach(a => { for (let i = i0; i < d.n; i++) if (d.p[a][i] !== null) vals.push(d.p[a][i]); });
     const max = Math.max(1, ...vals), min = Math.min(0, ...vals);
     const Y = (top, v) => top + rowH - (v - min) / (max - min) * rowH;
     const axisY = r(H - axisH + fs + 1), textW = t => t.length * fs * 0.6;
@@ -1046,11 +1050,11 @@ const SPOT = (() => {
       for (let i = i0; i < d.n; i++) {
         if (arr[i] === null) continue;
         any = true;
-        const v = arr[i] / 10, y0 = Y(top, 0), y1 = Y(top, v);
+        const v = arr[i], y0 = Y(top, 0), y1 = Y(top, v);
         const cls = 'b' + (i < cur ? ' past' : '') + (v < 0 ? ' neg' : opts.hi && v > opts.hi ? ' hi' : '');
         const t1 = dkParts(t0 + i * step).hm, t2 = dkParts(t0 + (i + 1) * step).hm;
         s += `<rect class="${cls}" x="${r(X(i))}" y="${r(Math.min(y0, y1))}" width="${r(bw)}" height="${r(Math.max(0.6, Math.abs(y0 - y1)))}">` +
-          `<title>${t1}–${t2} · ${fmt(dkk(v), 2, lang)} ${esc(L.unit)}</title></rect>`;
+          `<title>${t1}–${t2} · ${fmt(kr(v), 2, lang)} ${esc(L.unit)}</title></rect>`;
       }
       if (!any) s += `<text class="none" x="${gx + fs}" y="${r(top + rowH / 2)}" dominant-baseline="middle" font-size="${fs}">${esc(L.noArea)}</text>`;
       if (opts.mark && any) {
@@ -1080,13 +1084,13 @@ const SPOT = (() => {
     const lang = opts.lang === 'en' ? 'en' : 'da', L = I18N[lang];
     return AREAS.map(a => {
       const ws = windows(d, a, opts.now).filter(Boolean);
-      const parts = ws.map(w => `<b>${w.h} ${esc(L.h)}</b> ${esc(spanLabel(w, opts.now, L))} <b>${fmt(dkk(w.avg), 2, lang)}</b>`);
+      const parts = ws.map(w => `<b>${w.h} ${esc(L.h)}</b> ${esc(spanLabel(w, opts.now, L))} <b>${fmt(kr(w.avg), 2, lang)}</b>`);
       return `<div><b>${esc(L.area[a])}</b> · ${esc(L.cheapest)}: ${parts.length ? parts.join(' · ') + ' ' + esc(L.unit) : '—'}</div>`;
     }).join('');
   }
 
   return { AREAS, HOURS, I18N, looksSane, endsAt, slotAt, firstFuture, cheapestWindow, windows, spanLabel,
-    dkParts, tomorrowDate, render, summary, dkk, fmt };
+    dkParts, tomorrowDate, render, summary, kr, fmt };
 })();
 /* SPOT-LIB:END */</script>
 <script>(async function(){
@@ -2582,7 +2586,7 @@ const I18N = {
     sheetShow: 'Vis detaljer', sheetHide: 'Skjul detaljer', kioskTip: 'Storskærm: kortet kører selv',
     co2: 'CO₂-intensitet', net: 'Nettoudveksling', west: 'Vest', east: 'Øst',
     ic: 'Forbindelser', mw: '← import · → eksport · MW',
-    foot: 'Data: Energinet Energi Data Service (åbne data) — alle målte tal. Positioner fra OpenStreetMap (© OpenStreetMap-bidragydere, ODbL, forenklet): solcelleparker, vindmøller, elnettet og udlandsforbindelsernes faktiske kabelruter. Kun kablernes højde over havet er tegnet — linjeføringen er den kortlagte. Enkelte ruter er kun delvist kortlagt; hold musen over forbindelsen for forbehold. Landmøller vises når du zoomer ind; på oversigt bæres de af tæthedsfelterne. Tal pr. havmøllepark (≈) er en beregnet, kapacitetsvægtet andel af den målte nationale havvind. Priser omregnet til kr./kWh med fastkurs 7,46 DKK/EUR. Indeholder data anvendt i henhold til »Conditions for use of Danish public-sector data« fra Energi Data Service-portalen (www.energidataservice.dk).',
+    foot: 'Data: Energinet Energi Data Service (åbne data) — alle målte tal. Positioner fra OpenStreetMap (© OpenStreetMap-bidragydere, ODbL, forenklet): solcelleparker, vindmøller, elnettet og udlandsforbindelsernes faktiske kabelruter. Kun kablernes højde over havet er tegnet — linjeføringen er den kortlagte. Enkelte ruter er kun delvist kortlagt; hold musen over forbindelsen for forbehold. Landmøller vises når du zoomer ind; på oversigt bæres de af tæthedsfelterne. Tal pr. havmøllepark (≈) er en beregnet, kapacitetsvægtet andel af den målte nationale havvind. Priser omregnet til kr./kWh med fastkurs 7,46 DKK/EUR. Kommende elpriser: Kilde: Energinet (www.energidataservice.dk), licens CC BY 4.0. Tallene er bearbejdet — omregnet fra DKK/MWh til kr./kWh og vist pr. kvarter.',
     lgImp: 'Import til Danmark', lgExp: 'Eksport fra Danmark', lgWind: 'Vindproduktion', lgSol: 'Solproduktion',
     lg400: '400 kV-nettet', lg150: '132/150 kV-nettet',
     keys: '<b>Træk</b> flyt · <b>Højre-træk</b> roter · <b>Scroll</b> zoom · <b>Mellemrum</b> afspil · <b>K</b> storskærm · <b>R</b> nulstil · <b>L</b> sprog',
@@ -2650,7 +2654,7 @@ const I18N = {
     kHomes: '≈ strøm til {n} mio. hjem', kEu: 'EU-snit ≈ {e} g',
     kSrc: 'Energinet Energi Data Service · åbne data',
     kPriceTag: 'KOMMENDE PRISER',
-    kPrice: ['{v} kr./kWh', 'Billigste 3 timer — Vest {w} · Øst {e} ({ev} kr./kWh) · spotpris uden afgifter'],
+    kPrice: ['{v} kr./kWh', 'Billigste 3 timer — Vest {w} · Øst {e} ({ev} kr./kWh) · spotpris, før nettarif, afgifter og moms'],
     kEv: {
       'Peak wind': ['{v} MW vind', '{date} — den kraftigste vindproduktion i de sidste 30 dage'],
       'Peak solar': ['{v} MW sol', '{date} — solens største bidrag i vinduet'],
@@ -2676,7 +2680,7 @@ const I18N = {
     sheetShow: 'Show details', sheetHide: 'Hide details', kioskTip: 'Big screen: the map runs itself',
     co2: 'CO₂ intensity', net: 'Net exchange', west: 'West', east: 'East',
     ic: 'Connections', mw: '← import · → export · MW',
-    foot: 'Data: Energinet Energy Data Service (open data) — every measured figure. Positions from OpenStreetMap (© OpenStreetMap contributors, ODbL, simplified): solar parks, wind turbines, the transmission grid and the interconnectors\' actual cable routes. Only the cables\' height above the sea is drawn — the ground track is the surveyed one. A few routes are only partly mapped; hover a link for the caveat. Onshore turbines appear as you zoom in; at overview distance the density footprints carry them. Per-farm figures (≈) are a computed, capacity-weighted share of measured national offshore wind. Prices converted to DKK/kWh at the fixed 7.46 DKK/EUR rate. Contains data used pursuant to "Conditions for use of Danish public-sector data" from the Energi Data Service portal (www.energidataservice.dk).',
+    foot: 'Data: Energinet Energy Data Service (open data) — every measured figure. Positions from OpenStreetMap (© OpenStreetMap contributors, ODbL, simplified): solar parks, wind turbines, the transmission grid and the interconnectors\' actual cable routes. Only the cables\' height above the sea is drawn — the ground track is the surveyed one. A few routes are only partly mapped; hover a link for the caveat. Onshore turbines appear as you zoom in; at overview distance the density footprints carry them. Per-farm figures (≈) are a computed, capacity-weighted share of measured national offshore wind. Prices converted to DKK/kWh at the fixed 7.46 DKK/EUR rate. Upcoming power prices: Source: Energinet (www.energidataservice.dk), licence CC BY 4.0. Figures are processed — converted from DKK/MWh to DKK/kWh and shown per quarter hour.',
     lgImp: 'Import to Denmark', lgExp: 'Export from Denmark', lgWind: 'Wind generation', lgSol: 'Solar generation',
     lg400: '400 kV grid', lg150: '132/150 kV grid',
     keys: '<b>Drag</b> pan · <b>Right-drag</b> rotate · <b>Scroll</b> zoom · <b>Space</b> play · <b>K</b> big screen · <b>R</b> reset · <b>L</b> language',
@@ -2734,7 +2738,7 @@ const I18N = {
     kHomes: '≈ power for {n} million homes', kEu: 'EU average ≈ {e} g',
     kSrc: 'Energinet Energy Data Service · open data',
     kPriceTag: 'UPCOMING PRICES',
-    kPrice: ['{v} DKK/kWh', 'Cheapest 3 hours — West {w} · East {e} ({ev} DKK/kWh) · spot price before taxes'],
+    kPrice: ['{v} DKK/kWh', 'Cheapest 3 hours — West {w} · East {e} ({ev} DKK/kWh) · spot price, before grid tariff, taxes and VAT'],
     kEv: {
       'Peak wind': ['{v} MW of wind', '{date} — the strongest wind output of the last 30 days'],
       'Peak solar': ['{v} MW of solar', "{date} — the sun's biggest contribution in the window"],
@@ -3189,21 +3193,21 @@ new ResizeObserver(measureTimeline).observe($('#bottom'));
    maths and the SVG live in the SPOT block above the main script (pure, so
    test/spot.test.js runs it under Node); this is only the wiring.
 
-   Data ladder, same shape as DATA_URLS: the Worker first (fresh, cached
-   15 min), then prices.json beside the page, then the public repo, which
-   sends Access-Control-Allow-Origin: * and so also serves a copy opened
-   from disk. Nothing here may stop the map: every failure ends as the
-   one-line note in the strip with the button disabled, and the next
+   The browser never calls Energinet for this: prices.js in the update
+   pipeline downloads the data and writes prices.json, and the page reads
+   that file - beside the page first, then from the public repo, which sends
+   Access-Control-Allow-Origin: * and so also serves a copy opened from disk.
+   Nothing here may stop the map: a missing, unreadable or stale file ends
+   as the one-line note in the strip with the button disabled, and the next
    refresh tries again. */
 const SPOT_URLS = [
-  'https://api.gridkort.dk/elnet/prices.json',
   'prices.json',
   'https://raw.githubusercontent.com/SebLynX/danmarks-elnet-live/main/prices.json'
 ];
 const SPOT_DEADLINE_MS = 4000, SPOT_REFRESH_MS = 30 * 60000;
 const spot = { data: null, mark: false, tried: false, fetchedAt: 0, slot: null };
 const ST = k => SPOT.I18N[LANG === 'en' ? 'en' : 'da'][k];
-const spotEl = { head: $('#spotHead .k'), btn: $('#cheapBtn'), src: $('#spotSrc'), strip: $('#spotStrip'), sum: $('#spotSum') };
+const spotEl = { head: $('#spotHead .k'), note: $('#spotHead .n'), btn: $('#cheapBtn'), src: $('#spotSrc'), strip: $('#spotStrip'), sum: $('#spotSum') };
 
 async function fetchSpot() {
   for (const url of SPOT_URLS) {
@@ -3229,9 +3233,11 @@ async function spotLoad() {
   if (d) spot.data = d;          // a failed refresh keeps the last good series
   spotRender();
 }
-const spotOpts = (w, h, mark, scale) => ({ w, h, lang: LANG, now: Date.now(), mark, hi: MED.p1 * 1.8, scale });
+/* `hi` mirrors the tiles' "expensive" threshold, 1.8 × the 30-day DK1 median;
+   MED.p1 is €/MWh from the history, the strip is DKK/MWh, hence × 7.46 */
+const spotOpts = (w, h, mark, scale) => ({ w, h, lang: LANG, now: Date.now(), mark, hi: MED.p1 * 7.46 * 1.8, scale });
 function spotRender() {
-  putText(spotEl.head, ST('head')); putText(spotEl.btn, ST('btn')); putText(spotEl.src, ST('src'));
+  putText(spotEl.head, ST('head')); putText(spotEl.note, ST('note')); putText(spotEl.btn, ST('btn')); putText(spotEl.src, ST('src'));
   spotEl.btn.disabled = !spot.data;
   const w = spotEl.strip.clientWidth, h = spotEl.strip.clientHeight;
   if (!w) return;   // hidden (kiosk, closed sheet) - drawn again when it is shown
@@ -3603,9 +3609,9 @@ function liveCaption(step, f) {
     // cheapest three hours ahead: headline on the west, both areas in the line
     const L = SPOT.I18N[LANG === 'en' ? 'en' : 'da'], w = spotWin3('DK1'), e = spotWin3('DK2');
     const span = x => x ? SPOT.spanLabel(x, Date.now(), L) : '—';
-    const price = x => x ? fmt(dkk(x.avg), 2) : '—';
+    const price = x => x ? fmt(SPOT.kr(x.avg), 2) : '—';
     const tpl = T('kPrice');
-    return [tpl[0].replace('{v}', (w || e) ? kNum(dkk((w || e).avg), 2) : '—'),
+    return [tpl[0].replace('{v}', (w || e) ? kNum(SPOT.kr((w || e).avg), 2) : '—'),
       tpl[1].replace('{w}', span(w)).replace('{wv}', price(w)).replace('{e}', span(e)).replace('{ev}', price(e))];
   }
   // provenance beat — honesty evaluated at render time, not cycle start

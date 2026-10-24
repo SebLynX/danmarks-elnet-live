@@ -18,10 +18,9 @@ assert.ok(block, 'index.html must carry the SPOT-LIB block');
 const SPOT = vm.runInThisContext('(() => {' + block[1] + ';return SPOT;})()');
 
 /* A series in the shape prices.js writes: t0 is UTC on a full hour, quarters,
-   prices EUR/MWh x 10. `dk1`/`dk2` are in EUR/MWh here for readability. */
+   prices in whole DKK/MWh (kr./kWh = value / 1000). */
 function series(t0, dk1, dk2 = dk1) {
-  const x10 = a => a.map(v => v === null ? null : Math.round(v * 10));
-  return { t0, step: 15, n: dk1.length, p: { DK1: x10(dk1), DK2: x10(dk2) } };
+  return { t0, step: 15, n: dk1.length, p: { DK1: dk1.slice(), DK2: dk2.slice() } };
 }
 const flat = (n, v) => new Array(n).fill(v);
 const T0 = '2026-10-20T12:00:00Z';                     // 14:00 Danish summer time, a plain Tuesday
@@ -130,11 +129,12 @@ test('spanLabel says "i morgen" / "tomorrow" only for windows starting on the ne
 });
 
 /* -------------------------------------------------------------- rendering */
-/* 48 quarters = 14:00 today to 02:00 tomorrow. DK1 is cheap 19:00-22:00 and
-   negative for one quarter at 14:30; DK2 is cheap 20:00-23:00. */
-const real = series(T0, flat(48, 60).map((v, i) => (i >= 20 && i < 32 ? 4 : i === 2 ? -3 : v)),
-  flat(48, 60).map((v, i) => (i >= 24 && i < 36 ? 4 : v)));
-const opts = { w: 900, h: 74, lang: 'da', now: at(0, 7), mark: false, hi: 100 };
+/* 48 quarters = 14:00 today to 02:00 tomorrow, DKK/MWh. DK1 is 600 (0,60
+   kr./kWh), cheap at 30 (0,03) 19:00-22:00 and negative for one quarter at
+   14:30; DK2 is cheap 20:00-23:00. */
+const real = series(T0, flat(48, 600).map((v, i) => (i >= 20 && i < 32 ? 30 : i === 2 ? -30 : v)),
+  flat(48, 600).map((v, i) => (i >= 24 && i < 36 ? 30 : v)));
+const opts = { w: 900, h: 74, lang: 'da', now: at(0, 7), mark: false, hi: 1000 };
 const count = (s, re) => (s.match(re) || []).length;
 
 test('render() draws one bar per quarter in each area, past quarters dimmed', () => {
@@ -151,11 +151,11 @@ test('render() draws one bar per quarter in each area, past quarters dimmed', ()
 });
 
 test('render() marks negative and expensive quarters and draws the zero line', () => {
-  const svg = SPOT.render(real, { ...opts, hi: 50 });
+  const svg = SPOT.render(real, { ...opts, hi: 500 });
   assert.equal(count(svg, /class="b neg"/g), 1);
-  assert.ok(count(svg, /class="b hi"/g) > 40);
+  assert.equal(count(svg, /class="b hi"/g), 48 - 12 - 1 + 48 - 12);   // every 600 quarter in both rows
   assert.equal(count(svg, /class="zero"/g), 2);
-  const positive = SPOT.render(series(T0, flat(8, 5)), opts);
+  const positive = SPOT.render(series(T0, flat(8, 50)), opts);
   assert.equal(count(positive, /class="zero"/g), 0);
 });
 
@@ -199,7 +199,7 @@ test('render() degrades to a one-line note without data or without a future', ()
 });
 
 test('render() says "ingen data" for an area with no values', () => {
-  const d = series(T0, flat(8, 5), flat(8, null));
+  const d = series(T0, flat(8, 50), flat(8, null));
   const svg = SPOT.render(d, opts);
   assert.ok(svg.includes('>ingen data</text>'));
   assert.equal(count(svg, /<rect class="b"/g), 8);
@@ -222,7 +222,7 @@ test('summary() lists the three windows per area with Danish letters and the uni
   const html = SPOT.summary(real, { ...opts, mark: true });
   assert.ok(html.includes('<b>DK1 Vest</b>') && html.includes('<b>DK2 Øst</b>'));
   assert.ok(html.includes('billigst:'));
-  assert.ok(html.includes('<b>1 t</b> 19:00–20:00 <b>0,03</b>'));     // 4 €/MWh × 0,746 = 2,98 øre -> 0,03
+  assert.ok(html.includes('<b>1 t</b> 19:00–20:00 <b>0,03</b>'));     // 30 DKK/MWh = 0,03 kr./kWh
   assert.equal(count(html, /kr\.\/kWh/g), 2);
   assert.ok(html.includes('<b>8 t</b>'));
   const en = SPOT.summary(real, { ...opts, lang: 'en' });
@@ -230,30 +230,43 @@ test('summary() lists the three windows per area with Danish letters and the uni
   assert.equal(SPOT.summary(null, opts), '');
 });
 
-test('summary() formats the average in kr./kWh at the fixed 7,46 rate like the tiles', () => {
-  const d = series(T0, flat(40, 100));                   // 100 €/MWh = 0,75 kr./kWh
+test('summary() and the bar titles show DKK/MWh ÷ 1000 as kr./kWh with two decimals', () => {
+  const d = series(T0, flat(40, 754));                   // 754 DKK/MWh = 0,754 -> 0,75 kr./kWh
   const html = SPOT.summary(d, { ...opts, now: at(0) });
   assert.ok(html.includes('<b>0,75</b>'));
-  assert.equal(SPOT.dkk(100), 0.75);
-  assert.equal(SPOT.dkk(-0.1), 0);                        // never "-0,00"
+  assert.equal(SPOT.kr(754), 0.75);
+  assert.equal(SPOT.kr(1234.5), 1.23);
+  assert.equal(SPOT.kr(-4), 0);                           // never "-0,00"
+  assert.ok(Object.is(SPOT.kr(-4), 0));
+  const svg = SPOT.render(d, { ...opts, now: at(0) });
+  assert.ok(svg.includes('<title>14:00–14:15 · 0,75 kr./kWh</title>'));
+  const en = SPOT.render(d, { ...opts, now: at(0), lang: 'en' });
+  assert.ok(en.includes('<title>14:00–14:15 · 0.75 DKK/kWh</title>'));
 });
 
 /* ---------------------------------------------------- the page around it */
-test('the Danish UI texts carry proper æ, ø and å', () => {
+test('the Danish UI texts carry proper æ, ø and å, the agreed label and the CC BY 4.0 credit', () => {
   assert.equal(SPOT.I18N.da.btn, 'Hvornår er det billigst?');
   assert.equal(SPOT.I18N.da.area.DK2, 'DK2 Øst');
-  assert.equal(SPOT.I18N.da.src, 'Kilde: Energi Data Service (Energinet) · åbne data');
+  assert.equal(SPOT.I18N.da.note, 'spotpris, før nettarif, afgifter og moms');
+  assert.equal(SPOT.I18N.da.src, 'Kilde: Energinet (www.energidataservice.dk), CC BY 4.0 · tallene er bearbejdet (omregnet til kr./kWh)');
+  assert.equal(SPOT.I18N.en.note, 'spot price, before grid tariff, taxes and VAT');
+  assert.ok(SPOT.I18N.en.src.startsWith('Source: Energinet (www.energidataservice.dk), CC BY 4.0'));
   assert.equal(SPOT.I18N.en.btn, 'When is it cheapest?');
   for (const k of Object.keys(SPOT.I18N.da)) assert.ok(k in SPOT.I18N.en, 'en lacks ' + k);
 });
 
-test('index.html carries the strip, the button and the Energi Data Service acknowledgement', () => {
+test('index.html carries the strip, the button, the label and the CC BY 4.0 credit', () => {
   assert.ok(html.includes('id="cheapBtn"') && html.includes('>Hvornår er det billigst?</button>'));
   assert.ok(html.includes('id="spotStrip"') && html.includes('id="spotSum"'));
+  assert.ok(html.includes('<span class="n">spotpris, før nettarif, afgifter og moms</span>'));
   assert.ok(html.includes('href="https://www.energidataservice.dk/tso-electricity/DayAheadPrices"'));
-  // the licence's own acknowledgement wording, in both languages' info text
-  assert.ok(html.includes('Indeholder data anvendt i henhold til »Conditions for use of Danish public-sector data« fra Energi Data Service-portalen (www.energidataservice.dk)'));
-  assert.ok(html.includes('Contains data used pursuant to "Conditions for use of Danish public-sector data" from the Energi Data Service portal (www.energidataservice.dk)'));
+  assert.ok(html.includes('>Kilde: Energinet (www.energidataservice.dk), CC BY 4.0 · tallene er bearbejdet (omregnet til kr./kWh)</a>'));
+  // credit, licence and "processed" in both languages' info text; the kiosk line carries the label
+  assert.ok(html.includes('Kilde: Energinet (www.energidataservice.dk), licens CC BY 4.0. Tallene er bearbejdet'));
+  assert.ok(html.includes('Source: Energinet (www.energidataservice.dk), licence CC BY 4.0. Figures are processed'));
+  assert.ok(html.includes('spotpris, før nettarif, afgifter og moms\'],'));
+  assert.ok(!html.includes('Conditions for use of Danish public-sector data'));
   // the kiosk shows the strip as a beat of its own
   assert.ok(html.includes('<div class="kg"></div>') && html.includes('KIOSK_PRICE_STEP'));
   assert.ok(html.includes("kPriceTag: 'KOMMENDE PRISER'") && html.includes("kPriceTag: 'UPCOMING PRICES'"));

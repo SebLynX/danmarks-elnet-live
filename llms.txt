@@ -10,7 +10,7 @@
 - Målt, direkte fra Energinet Energi Data Service: samlet produktion, havvind, landvind, sol, CO₂-udledning pr. kWh, udvekslingen på hver af de ni forbindelser (otte til nabolandene og Storebælt mellem DK1 og DK2) og day-ahead-priser for budområderne DK1 (Vest) og DK2 (Øst).
 - Priserne er spotpriser på engrosmarkedet, uden afgifter, moms og transport.
 - En tidslinje med de sidste 30 dages historik i timeopløsning, hentet komplet fra Energinet.
-- Kommende spotpriser: day-ahead-priserne for DK1 og DK2 i kvarterer frem til i morgen aften, og knappen »Hvornår er det billigst?«, der markerer de billigste sammenhængende 1, 3 og 8 timer fra nu (til elbil, opvaskemaskine, varmepumpe). Vises også i kiosk-tilstand.
+- Kommende elpriser: day-ahead-priserne for DK1 og DK2 i kvarterer frem til i morgen aften (spotpris, før nettarif, afgifter og moms), og knappen »Hvornår er det billigst?«, der markerer de billigste sammenhængende 1, 3 og 8 timer blandt de resterende fremtidige kvarterer (til elbil, opvaskemaskine, varmepumpe). Vises også i kiosk-tilstand.
 - Kortlagt fra OpenStreetMap: 6.267 vindmøller, 29 havmølleparker, 121 solcelleparker, transmissionsnettet på 400 og 132/150 kV og kabelruterne for de ni forbindelser. Nettet er forenklet med ca. ±500 m.
 
 ## Hvor friske tallene er
@@ -27,7 +27,7 @@ Kortet henter først sine tal gennem en lille proxy, der spørger Energinet og h
 ## Kilder
 
 - [Energinet Energi Data Service, Power System Right Now](https://www.energidataservice.dk/tso-electricity/PowerSystemRightNow): produktion, CO₂ og udveksling.
-- [Energinet Energi Data Service, Day-Ahead Prices](https://www.energidataservice.dk/tso-electricity/DayAheadPrices): priser i DK1 og DK2, 15 minutters opløsning. Indeholder data anvendt i henhold til »Conditions for use of Danish public-sector data« fra Energi Data Service-portalen.
+- [Energinet Energi Data Service, Day-Ahead Prices](https://www.energidataservice.dk/tso-electricity/DayAheadPrices): priser i DK1 og DK2, 15 minutters opløsning. Kilde: Energinet (www.energidataservice.dk), licens CC BY 4.0; tallene er bearbejdet (omregnet fra DKK/MWh til kr./kWh).
 - [OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL): positioner, net og kabelruter.
 
 ## English
