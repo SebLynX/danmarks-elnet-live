@@ -790,7 +790,7 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
     <span id="sheetSum" class="mono"></span>
     <span id="sheetLbl">Vis detaljer</span>
   </button>
-  <div class="priv" id="sheetPriv" data-i18n="privNote">Gridkort er et uafhængigt sideprojekt fra Northern Wolf AI, bygget på offentlige åbne data fra Energi Data Service og Energistyrelsen. Gridkort.dk er ikke udgivet af Energinet.</div>
+  <div class="priv" id="sheetPriv" data-i18n="privNote">Gridkort er et uafhængigt sideprojekt, bygget på offentlige åbne data fra Energi Data Service og Energistyrelsen. Gridkort.dk er ikke udgivet af Energinet.</div>
   <div id="left" class="card">
     <h3><span data-i18n="prod">Produktion</span><span id="prodPct" class="mono">—</span></h3>
     <!-- The headline number first and the breakdown under it: the same order as the tiles
@@ -869,9 +869,9 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
       <span class="sw g150"></span><span data-i18n="lg150">132/150 kV-nettet</span></div>
     <a class="lgd" id="clipLink" target="_blank" rel="noopener" hidden><span class="pl" aria-hidden="true">▶</span><span></span></a>
     <div class="keys" data-i18n="keys"></div>
-    <div class="priv" data-i18n="privNote">Gridkort er et uafhængigt sideprojekt fra Northern Wolf AI, bygget på offentlige åbne data fra Energi Data Service og Energistyrelsen. Gridkort.dk er ikke udgivet af Energinet.</div>
+    <div class="priv" data-i18n="privNote">Gridkort er et uafhængigt sideprojekt, bygget på offentlige åbne data fra Energi Data Service og Energistyrelsen. Gridkort.dk er ikke udgivet af Energinet.</div>
     <button id="infoBtn" type="button" aria-expanded="false">i</button>
-    <div id="infoPan" hidden><span data-i18n="foot"></span><div class="priv" data-i18n="privNote">Gridkort er et uafhængigt sideprojekt fra Northern Wolf AI, bygget på offentlige åbne data fra Energi Data Service og Energistyrelsen. Gridkort.dk er ikke udgivet af Energinet.</div></div>
+    <div id="infoPan" hidden><span data-i18n="foot"></span><div class="priv" data-i18n="privNote">Gridkort er et uafhængigt sideprojekt, bygget på offentlige åbne data fra Energi Data Service og Energistyrelsen. Gridkort.dk er ikke udgivet af Energinet.</div></div>
   </div>
   </div><!-- /#sheet -->
   <div id="labels"></div>
@@ -886,7 +886,7 @@ body.kiosk::before,body.kiosk::after{background:#FAF7F2}
       <li><span class="ic">🔁</span><span data-i18n="frB2"><b style="color:var(--imp)">Ravgul</b> = import til Danmark · <b style="color:var(--exp)">grøn</b> = eksport. Jo tykkere linje, jo mere strøm.</span></li>
       <li><span class="ic">🕰</span><span data-i18n="frB3">Tidslinjen nederst afspiller de sidste 30 dage — prøv knappen «Negativ pris».</span></li>
     </ul>
-    <div class="priv" data-i18n="privNote">Gridkort er et uafhængigt sideprojekt fra Northern Wolf AI, bygget på offentlige åbne data fra Energi Data Service og Energistyrelsen. Gridkort.dk er ikke udgivet af Energinet.</div>
+    <div class="priv" data-i18n="privNote">Gridkort er et uafhængigt sideprojekt, bygget på offentlige åbne data fra Energi Data Service og Energistyrelsen. Gridkort.dk er ikke udgivet af Energinet.</div>
     <div class="btns">
       <button class="fbtn pri" id="frStart" data-i18n="frStart">Se lige nu</button>
       <button class="fbtn" id="frWow" data-i18n="frWow">Vis mig den vildeste time</button>
@@ -2645,7 +2645,7 @@ const I18N = {
     updMeas: 'måling <b>{a}</b> gammel',
     frTitle: 'Danmarks elnet — lige nu', frSub: 'Energinet Energi Data Service · åbne data',
     /* only shown in the privat build — see .priv in the base sheet */
-    privNote: 'Gridkort er et uafhængigt sideprojekt fra Northern Wolf AI, bygget på offentlige åbne data fra Energi Data Service og Energistyrelsen. Gridkort.dk er ikke udgivet af Energinet.',
+    privNote: 'Gridkort er et uafhængigt sideprojekt, bygget på offentlige åbne data fra Energi Data Service og Energistyrelsen. Gridkort.dk er ikke udgivet af Energinet.',
     frB1: 'Tallene kommer fra Energinets åbne data — produktion, priser, CO₂ og udveksling. Tal mærket ≈ er beregnede andele, ikke målinger pr. anlæg. Med live-forbindelse opdateres alt hvert minut; ellers vises de seneste 30 dages historik.',
     /* The words carry the colour instead of naming it. Naming a hue breaks
        the moment a build changes palette - "ravgul" was wrong in the privat
@@ -2739,7 +2739,7 @@ const I18N = {
     updLive: 'updated <b>{a}s</b> ago · next in {b}s', updWait: 'fetching data…',
     updMeas: 'measurement <b>{a}</b> old',
     frTitle: "Denmark's power grid — right now", frSub: 'Energinet Energy Data Service · open data',
-    privNote: 'Gridkort is an independent side project by Northern Wolf AI, built on public open data from Energi Data Service and the Danish Energy Agency. Gridkort.dk is not published by Energinet.',
+    privNote: 'Gridkort is an independent side project, built on public open data from Energi Data Service and the Danish Energy Agency. Gridkort.dk is not published by Energinet.',
     frB1: "The numbers come from Energinet's open data — generation, prices, CO₂ and exchange. Figures marked ≈ are computed shares, not per-site measurements. With a live connection everything updates every minute; otherwise you see the last 30 days of history.",
     frB2: '<b style="color:var(--imp)">Import</b> into Denmark · <b style="color:var(--exp)">export</b> from Denmark. The thicker the line, the more power.',
     frB3: 'The timeline at the bottom replays the last 30 days — try the «Negative price» button.',
