@@ -349,7 +349,8 @@ Workflowets egne commits tæller som aktivitet, men kig forbi en gang imellem.
   samlet); kildeangivelsen står også i kortets info-panel og ved pris-striben.
 - **Positioner og netgeometri:** [OpenStreetMap](https://www.openstreetmap.org/copyright),
   licens ODbL. Krediteret i kortets footer.
-- **Landegrænser:** Natural Earth (public domain).
+- **Kyst og landegrænser:** Danmarks kyst fra DAGI (Klimadatastyrelsen, via Dataforsyningen);
+  nabolandene fra Natural Earth (public domain). Krediteret i kortets footer.
 
 Kortet er lavet som en demonstration, ikke som en driftet tjeneste fra Energinet. Brug
 det som sådan.
