@@ -18,15 +18,24 @@
    header naming the map's own address.
 
    Politeness towards Energinet: their API guide asks for one request
-   per dataset per update cycle. PowerSystemRightNow updates every
-   minute, prices every 15 minutes. So the finished frame is cached
-   for 60 s and the prices for 15 min. However many people have the
-   map open, Energinet sees about one call a minute from each
-   Cloudflare location. Failures are cached for 30 s, so a hiccup at
-   Energinet is not answered with a flood of retries.
+   per dataset per update cycle, and Energinet now enforces it with
+   per-dataset rate limits (HTTP 429 "Rate limit is exceeded. Try again
+   in X seconds"; asking again before then can keep the block going).
+   PowerSystemRightNow updates every minute, so the frame is cached for
+   60 s. Day-ahead prices change once a day, so they are cached for an
+   hour. A 429 pauses that one dataset for the whole wait Energinet
+   names (block marker below), and nothing is sent for it until then.
+   The frame no longer stands or falls with the prices: if they are
+   refused, the last good ones are used.
+
+   03-11-2026: the Worker had been answering 502 "HTTP 429" since the
+   morning. It asked for prices every 15 min per Cloudflare location on
+   two routes, read the wait only from a Retry-After header and capped
+   it at 5 min, so it kept asking during the block.
    ============================================================ */
 const API = 'https://api.energidataservice.dk/dataset/';
-const FRAME_TTL = 60, PRICE_TTL = 900, FAIL_TTL = 30;
+const FRAME_TTL = 60, PRICE_TTL = 3600, FAIL_TTL = 30;
+const WAIT_DEFAULT = 900, WAIT_MAX = 6 * 3600, LAST_TTL = 2 * 86400;
 
 /* must stay identical to XK / PK in the map (src/data.js) and poll.js */
 const XK = ['DK1_DE', 'DK1_NL', 'DK1_GB', 'DK1_NO', 'DK1_SE', 'DK1_DK2', 'DK2_DE', 'DK2_SE', 'BH_SE'];
@@ -43,12 +52,26 @@ const ALLOW = [
 const cors = origin => origin && ALLOW.some(re => re.test(origin))
   ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' } : { 'Vary': 'Origin' };
 
-/* An HTTP 429 carries Energinet's Retry-After out with the error: the route
-   caches the failure for that long (capped at 5 min), so the Worker answers
-   from that cache instead of asking Energinet again before it may. */
+/* One dataset at a time. While a dataset's block marker is in the cache,
+   it is not asked at all. An HTTP 429 sets the marker for the wait
+   Energinet names - Retry-After, or "Try again in X seconds" in the body,
+   else 15 min - up to 6 h. */
+const datasetOf = url => url.slice(API.length).split('?')[0];
+const key = name => new Request('https://api.gridkort.dk/__cache/' + name);
 async function getJSON(url) {
+  const ds = datasetOf(url);
+  const blocked = await caches.default.match(key('block-' + ds));
+  if (blocked) { const b = await blocked.json(); throw new Error('HTTP 429 (' + ds + ' paused until ' + b.until + ')'); }
   const r = await fetch(url, { headers: { 'User-Agent': 'gridkort-api (gridkort.dk, hobby map)' }, signal: AbortSignal.timeout(8000) });
-  if (r.status === 429) { const e = new Error('HTTP 429'); e.retryAfter = Number(r.headers.get('Retry-After')) || 60; throw e; }
+  if (r.status === 429) {
+    const body = await r.text().catch(() => '');
+    const m = /try again in\s+(\d+)\s*s/i.exec(body);
+    const wait = Math.min(WAIT_MAX, Number(r.headers.get('Retry-After')) || (m ? Number(m[1]) : 0) || WAIT_DEFAULT);
+    const until = new Date(Date.now() + wait * 1000).toISOString();
+    await caches.default.put(key('block-' + ds), new Response(JSON.stringify({ until, wait, said: body.slice(0, 200) }),
+      { headers: { 'Cache-Control': 'public, max-age=' + wait } }));
+    throw new Error('HTTP 429 (' + ds + ' paused until ' + until + ')');
+  }
   if (!r.ok) throw new Error('HTTP ' + r.status);
   const t = await r.text();
   if (!t.trim()) throw new Error('empty 200');
@@ -68,22 +91,33 @@ function dkClock(hours = 0) {
 const fmtDK = dt => { const p = n => String(n).padStart(2, '0');
   return `${p(dt.getUTCDate())}-${p(dt.getUTCMonth() + 1)}-${dt.getUTCFullYear()} ${p(dt.getUTCHours())}:${p(dt.getUTCMinutes())}`; };
 
-/* cache helper: Cloudflare's per-location cache, keyed by a private URL */
+/* cache helper: Cloudflare's per-location cache, keyed by a private URL.
+   A good value is also kept for two days as 'last-<name>', for lastGood(). */
 async function cached(ctx, name, ttl, make) {
-  const cache = caches.default, key = new Request('https://api.gridkort.dk/__cache/' + name);
-  const hit = await cache.match(key);
+  const cache = caches.default;
+  const hit = await cache.match(key(name));
   if (hit) return hit.json();
   const val = await make();
-  ctx.waitUntil(cache.put(key, new Response(JSON.stringify(val), { headers: { 'Cache-Control': 'public, max-age=' + ttl } })));
+  const body = JSON.stringify(val);
+  ctx.waitUntil(Promise.all([
+    cache.put(key(name), new Response(body, { headers: { 'Cache-Control': 'public, max-age=' + ttl } })),
+    cache.put(key('last-' + name), new Response(body, { headers: { 'Cache-Control': 'public, max-age=' + LAST_TTL } }))
+  ]));
   return val;
+}
+async function lastGood(name) {
+  const hit = await caches.default.match(key('last-' + name));
+  return hit ? hit.json() : null;
 }
 
 async function buildFrame(ctx) {
   const nowStr = dkClock(0);
+  /* the prices are a side dish: refused or failing, the frame uses the last good ones (or none) */
   const [psr, dap] = await Promise.all([
     getJSON(`${API}PowerSystemRightNow?limit=1&sort=Minutes1DK%20DESC`),
     cached(ctx, 'elnet-prices', PRICE_TTL, () =>
       getJSON(`${API}DayAheadPrices?start=${dkClock(-5)}&end=${dkClock(1)}&limit=400&sort=TimeDK%20DESC`))
+      .catch(async () => (await lastGood('elnet-prices')) || { records: [] })
   ]);
   const r = psr.records && psr.records[0];
   if (!r) throw new Error('PowerSystemRightNow returned no records');
@@ -113,7 +147,7 @@ async function buildFrame(ctx) {
 /* ---- /elnet/prices.json: the quarters ahead ----
    DayAheadPriceDKK for DK1 and DK2 from the start of today (Danish time) to
    the last quarter Energinet has published - normally tomorrow 23:45 once
-   the auction result lands between 13:00 and 14:00 CET. Cached 15 min, like
+   the auction result lands between 13:00 and 14:00 CET. Cached an hour, like
    the current prices in the frame; the series changes once a day. */
 const AREAS = ['DK1', 'DK2'];
 const STEP = 15;             // minutes - the dataset's resolution (PT15M)
@@ -164,9 +198,19 @@ export default {
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...h, 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '86400' } });
     if (req.method !== 'GET') return new Response('GET only', { status: 405, headers: h });
     if (url.pathname === '/') return new Response('gridkort.dk data service. Energinet Energi Data Service, cached. Map: https://el.gridkort.dk/\n', { headers: { ...h, 'Content-Type': 'text/plain; charset=utf-8' } });
-    /* two routes, one cache name and TTL each. A failure is cached briefly
-       under the same name - for Retry-After seconds after a 429 - so a
-       hiccup at Energinet is not met with a flood of retries. */
+    /* what this Cloudflare location is waiting for: one line per paused dataset */
+    if (url.pathname === '/elnet/status') {
+      const out = { checked: new Date().toISOString(), paused: {} };
+      for (const ds of ['PowerSystemRightNow', 'DayAheadPrices']) {
+        const b = await caches.default.match(key('block-' + ds));
+        if (b) out.paused[ds] = await b.json();
+      }
+      return new Response(JSON.stringify(out), { headers: { ...h, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
+    }
+    /* two routes, one cache name and TTL each. A failure is cached for 30 s
+       under the same name; a 429 is held per dataset by getJSON's block
+       marker, however long Energinet asks. The quarters ahead fall back to
+       the last good series while it still reaches past now. */
     const route = url.pathname === '/elnet/now.json' ? ['elnet-now', FRAME_TTL, () => buildFrame(ctx)]
       : url.pathname === '/elnet/prices.json' ? ['elnet-prices-ahead', PRICE_TTL, buildPrices] : null;
     if (!route) return new Response('Not found', { status: 404, headers: h });
@@ -174,10 +218,13 @@ export default {
     let out, status = 200;
     try { out = await cached(ctx, name, ttl, make); }
     catch (e) {
-      out = { error: String(e.message || e) }; status = 502;
-      const hold = Math.min(300, Math.max(FAIL_TTL, e.retryAfter || 0));
-      ctx.waitUntil(caches.default.put(new Request('https://api.gridkort.dk/__cache/' + name),
-        new Response(JSON.stringify(out), { headers: { 'Cache-Control': 'public, max-age=' + hold } })));
+      const last = name === 'elnet-prices-ahead' ? await lastGood(name) : null;
+      if (last && Date.parse(last.t0) + last.n * last.step * 60000 > Date.now()) out = last;
+      else {
+        out = { error: String(e.message || e) }; status = 502;
+        ctx.waitUntil(caches.default.put(key(name),
+          new Response(JSON.stringify(out), { headers: { 'Cache-Control': 'public, max-age=' + FAIL_TTL } })));
+      }
     }
     if (out && out.error) status = 502;
     return new Response(JSON.stringify(out), { status, headers: { ...h, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
