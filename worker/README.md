@@ -8,8 +8,15 @@ sidste offentliggjorte kvarter — normalt i morgen kl. 23:45). Kortet læser be
 falder tilbage på filerne fra GitHub-kørslen, hvis workeren ikke svarer.
 
 - Henter `PowerSystemRightNow` og `DayAheadPrices` hos Energinet (uden Origin-header, så svaret ikke er tomt).
-- Cacher den færdige måling i 60 s og priserne i 15 min pr. Cloudflare-sted. Fejl caches i 30 s;
-  et HTTP 429 caches i `Retry-After` sekunder (højst 5 min), så Energinet ikke spørges igen før den må.
+- Cacher den færdige måling i 60 s og priserne i 1 time pr. Cloudflare-sted (priserne skifter én gang i døgnet).
+  Fejl caches i 30 s. Et HTTP 429 sætter netop det datasæt på pause i hele den ventetid, Energinet
+  angiver (`Retry-After` eller »Try again in X seconds« i svaret, ellers 15 min, højst 6 timer), og
+  der sendes intet til det datasæt før pausen er slut. Energinet håndhæver nu ét kald pr. datasæt pr.
+  opdateringsinterval, og kald inden for ventetiden kan forlænge spærringen.
+- Afviste eller fejlende priser vælter ikke målingen: `now.json` bruger de sidst gode priser (eller ingen),
+  og `prices.json` serverer den sidst gode serie, så længe den rækker ud over nu.
+- `https://api.gridkort.dk/elnet/status` viser, hvilke datasæt dette Cloudflare-sted venter på, til hvornår
+  og hvad Energinet svarede.
 - `compactPrices()` er en kopi af funktionen i `prices.js`; `node --test` i repoets rod tjekker, at de to
   er ens, og kører workerens ruter under Node med en stub for Energinet og cachen (`test/worker.test.js`).
 - CORS kun for `*.gridkort.dk`, `seblynx.github.io`, `*.energinet.dk` og filer åbnet fra disken (`null`).
