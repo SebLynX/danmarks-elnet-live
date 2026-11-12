@@ -443,8 +443,26 @@ const ASSEMBLE_RUN = 'node cloudflare/assemble.js';
 /* Checkout and setup-node are the only steps with no run. Every run
    must be one of these three commands. */
 const ALLOWED_RUNS = new Set([CI_RUN, ASSEMBLE_RUN, DEPLOY_RUN]);
+const CHECKOUT_USES = 'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5';
+const SETUP_NODE_USES = 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020';
+const WORKFLOW_KEYS = new Set(['name', 'on', 'permissions', 'concurrency', 'jobs']);
+const CONCURRENCY_KEYS = new Set(['group', 'cancel-in-progress']);
+const JOB_KEYS = new Set(['if', 'runs-on', 'timeout-minutes', 'environment', 'permissions', 'steps']);
+const STEP_KEYS = new Set(['name', 'uses', 'with', 'run', 'env']);
+const CHECKOUT_WITH_KEYS = new Set(['persist-credentials']);
+const SETUP_NODE_WITH_KEYS = new Set(['node-version']);
+const DEPLOY_ENV_KEYS = new Set(['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']);
 const SECRET_RE = /\bsecrets\b/i;
 const RUN_SECRET_RE = /CLOUDFLARE_|\bsecrets\b/i;
+
+function unknownKeyProblems(where, obj, allowed) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return [where + ' is not a map'];
+  const problems = [];
+  for (const key of Object.keys(obj)) {
+    if (!allowed.has(key)) problems.push(where + ' has unknown key ' + key);
+  }
+  return problems;
+}
 
 function walkValues(node, path, fn) {
   if (typeof node === 'string') { fn(node, path); return; }
@@ -486,6 +504,11 @@ function workflowProblems(src) {
       if (key !== 'workflow_dispatch') problems.push('on: has ' + key);
     }
   }
+  problems.push(...unknownKeyProblems('workflow', doc, WORKFLOW_KEYS));
+  if (doc.concurrency) problems.push(...unknownKeyProblems('concurrency', doc.concurrency, CONCURRENCY_KEYS));
+  if (doc.on && doc.on.workflow_dispatch && typeof doc.on.workflow_dispatch === 'object') {
+    problems.push(...unknownKeyProblems('workflow_dispatch', doc.on.workflow_dispatch, new Set()));
+  }
   if (envHasCloudflare(doc.env)) problems.push('workflow env has CLOUDFLARE_');
   problems.push(...permProblems('workflow', doc.permissions));
   walkValues(doc, '', (value, path) => {
@@ -497,6 +520,8 @@ function workflowProblems(src) {
     return problems;
   }
   for (const [name, job] of Object.entries(jobs)) {
+    problems.push(...unknownKeyProblems(name, job, JOB_KEYS));
+    if (job['runs-on'] !== 'ubuntu-latest') problems.push(name + ' runs-on is not ubuntu-latest');
     if (String(job.if || '') !== "github.ref == 'refs/heads/main'") problems.push(name + ' if is not exactly github.ref == refs/heads/main');
     if (String(job.environment || '') !== 'cloudflare-production') problems.push(name + ' environment is not cloudflare-production');
     if (envHasCloudflare(job.env)) problems.push(name + ' job env has CLOUDFLARE_');
@@ -506,11 +531,16 @@ function workflowProblems(src) {
     let assemble = -1;
     let deploy = -1;
     job.steps.forEach((step, idx) => {
-      if (step.uses !== undefined && !/^[^@\s]+@[0-9a-f]{40}$/.test(String(step.uses))) {
-        problems.push(name + ' uses is not a 40-hex pin: ' + step.uses);
+      problems.push(...unknownKeyProblems(name + ' step ' + idx, step, STEP_KEYS));
+      if (step.uses !== undefined && step.uses !== CHECKOUT_USES && step.uses !== SETUP_NODE_USES) {
+        problems.push(name + ' uses is not the current pin: ' + step.uses);
       }
+      if (step.uses === CHECKOUT_USES) problems.push(...unknownKeyProblems(name + ' checkout with', step.with, CHECKOUT_WITH_KEYS));
+      if (step.uses === SETUP_NODE_USES) problems.push(...unknownKeyProblems(name + ' setup-node with', step.with, SETUP_NODE_WITH_KEYS));
       const hasRun = step.run !== undefined;
       const run = String(step.run || '').trim();
+      if (step.env !== undefined && run !== DEPLOY_RUN) problems.push(name + ' step env is only allowed on the deploy step');
+      if (run === DEPLOY_RUN) problems.push(...unknownKeyProblems(name + ' deploy env', step.env, DEPLOY_ENV_KEYS));
       if (hasRun) {
         if (!ALLOWED_RUNS.has(run)) problems.push(name + ' run command is not allowlisted: ' + run);
         if (run !== DEPLOY_RUN && run.includes('wrangler deploy')) problems.push(name + ' deploy run is not the pinned command');
@@ -581,8 +611,33 @@ test('workflow parser rejects a push trigger and a job-level Cloudflare token', 
   const orTrue = yml.replace("github.ref == 'refs/heads/main'", "github.ref == 'refs/heads/main' || true");
   assert.ok(workflowProblems(orTrue).some(problem => problem.includes('if is not exactly')));
 
-  const unpinned = yml.replace('actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5', 'actions/checkout@v4');
-  assert.ok(workflowProblems(unpinned).some(problem => problem.includes('uses is not a 40-hex pin')));
+  const unpinned = yml.replace(CHECKOUT_USES, 'actions/checkout@v4');
+  assert.ok(workflowProblems(unpinned).some(problem => problem.includes('uses is not the current pin')));
+  const otherCheckout = yml.replace(CHECKOUT_USES, 'actions/checkout@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.ok(workflowProblems(otherCheckout).some(problem => problem.includes('uses is not the current pin: actions/checkout@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')));
+  const otherSetup = yml.replace(SETUP_NODE_USES, 'actions/setup-node@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+  assert.ok(workflowProblems(otherSetup).some(problem => problem.includes('uses is not the current pin: actions/setup-node@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')));
+  const checkoutRef = yml.replace('          persist-credentials: false\n', '          persist-credentials: false\n          ref: main\n');
+  assert.ok(workflowProblems(checkoutRef).some(problem => problem.includes('unknown key ref')));
+  const checkoutRepo = yml.replace('          persist-credentials: false\n', '          persist-credentials: false\n          repository: other/repo\n');
+  assert.ok(workflowProblems(checkoutRepo).some(problem => problem.includes('unknown key repository')));
+  const stepShell = yml.replace('      - name: Installer wrangler\n        run:', '      - name: Installer wrangler\n        shell: bash\n        run:');
+  assert.ok(workflowProblems(stepShell).some(problem => problem.includes('unknown key shell')));
+  const workDir = yml.replace('      - name: Saml siden\n        run:', '      - name: Saml siden\n        working-directory: cloudflare\n        run:');
+  assert.ok(workflowProblems(workDir).some(problem => problem.includes('unknown key working-directory')));
+  const defaults = yml.replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n');
+  assert.ok(workflowProblems(defaults).some(problem => problem.includes('unknown key defaults')));
+  const container = yml.replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    container: ubuntu\n');
+  assert.ok(workflowProblems(container).some(problem => problem.includes('unknown key container')));
+  const services = yml.replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    services:\n      redis:\n        image: redis\n');
+  assert.ok(workflowProblems(services).some(problem => problem.includes('unknown key services')));
+  const selfHosted = yml.replace('runs-on: ubuntu-latest', 'runs-on: self-hosted');
+  assert.ok(workflowProblems(selfHosted).some(problem => problem.includes('runs-on is not ubuntu-latest')));
+  const nodeOptions = yml.replace(
+    '          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n',
+    '          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n          NODE_OPTIONS: --experimental-vm-modules\n'
+  );
+  assert.ok(workflowProblems(nodeOptions).some(problem => problem.includes('unknown key NODE_OPTIONS')));
   const write = yml.replace('      contents: read\n    steps:', '      contents: read\n      actions: write\n    steps:');
   assert.ok(workflowProblems(write).some(problem => problem.includes('actions: write')));
   const plainCi = yml.replace('npm ci --ignore-scripts', 'npm ci');
