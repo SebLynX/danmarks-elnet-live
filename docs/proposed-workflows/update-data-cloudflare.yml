@@ -1,0 +1,297 @@
+# IKKE AKTIV. Denne fil maa ikke ligge i .github/workflows foer den er
+# sikkerhedsgodkendt. Den er en erstatning for update-data.yml, ikke et
+# supplement: koerer de to paa en gang, pusher de begge til main og
+# overskriver hinandens data.json. Slaa den gamle fra i samme commit som
+# denne flyttes ind.
+#
+# Henter friske tal fra Energinet, committer datafilerne og udgiver siden
+# til Cloudflare Worker el-gridkort. GitHub Pages beroeres ikke.
+#
+# Hvorfor et job overhovedet: api.energidataservice.dk svarer med et TOMT 200 paa
+# enhver forespoergsel der baerer en Origin-header - altsaa alt hvad en browser
+# sender, fra ethvert domaene, ogsaa "null" fra en fil aabnet fra disken.
+# Forespoergsler UDEN Origin faar fulde data. Denne koersel er ikke en browser.
+#
+# Hvorfor jobbet ogsaa UDGIVER siden: et commit lavet med GITHUB_TOKEN udloeser
+# IKKE et nyt workflow, og Cloudflare ser heller ikke det push som en grund
+# til at bygge, hvis udgivelsen haenger paa et Git-webhook. Filernes bytes
+# skal derfor op med wrangler i samme koersel, ellers bliver workers.dev
+# staende paa forrige udgivelse mens repoet har nye tal.
+#
+# To filer, to kadencer:
+#   data.json  ~470 bytes, EEN maaling, "lige nu"-tallene. Hver koersel.
+#   hist.json  ~70 KB, 30 dages historik i timer, tidslinjen under kortet.
+#              Kun naar den er mere end 6 timer gammel.
+# Historikken hentes forfra hos Energinet i stedet for at blive bygget af vores
+# egne maalinger. GitHub koerer i praksis jobbet hver 2.-5. time, saa en
+# selvbygget historik ville faa huller praecis der hvor jobbet sprang over.
+
+name: Opdater data (Cloudflare)
+
+on:
+  schedule:
+    # Hvert 15. minut, men forskudt vaek fra hele og halve timer. GitHub skriver
+    # selv at planlagte job forsinkes naar der er travlt, og at starten af hver
+    # time er det travleste tidspunkt - alle skriver '0 * * * *'. Minut 7, 22,
+    # 37 og 52 rammer et roligere hul i koeen.
+    #
+    # Bemaerk: GitHub leverer i praksis kun en lille del af de bestilte tider.
+    # Det er dokumenteret adfaerd ("some queued jobs may be dropped"), ikke en
+    # fejl i denne fil, og det kan ikke rettes herfra.
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:        # kan altid koeres manuelt fra Actions-fanen
+    inputs:
+      fornyhistorik:
+        description: 'Hent ogsaa 30 dages historik forfra, uanset alder'
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+
+# to koersler maa aldrig skrive data.json samtidig. Andet gruppenavn end
+# update-data.yml, saa et overlap under udskiftningen ikke aflyser den
+# koersel der stadig udgiver GitHub Pages.
+concurrency:
+  group: el-gridkort-deploy
+  cancel-in-progress: false
+
+# To job. commit maa skrive til main. deploy maa kun laese, og koerer kun
+# paa refs/heads/main i environment cloudflare-production (secrets der, med
+# en branch-regel der kun tillader main). Workers Scripts:Edit kan ikke
+# begraenses til et enkelt script.
+#
+# wrangler installeres med npm ci fra en package-lock.json. Den fil er
+# ikke med i dette PR. Se docs/cloudflare-migration.md. Uden den fejler
+# deploy med vilje.
+permissions:
+  contents: read
+
+jobs:
+  commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: write          # upload-artifact
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          # Historikkens alder tjekkes med git log -- hist.json.
+          # En shallow checkout faar seneste data-commit til at se ud som
+          # hist.jsons sidste aendring, saa historikken fornyes for sent.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      # Hentes til RUNNER_TEMP, uden for arbejdstraeet. Saa kan filen laegges
+      # paa plads igen efter en reset, og et halvt svar kan aldrig naa at
+      # overskrive en god data.json.
+      - name: Hent friske tal
+        run: |
+          node poll.js "$RUNNER_TEMP/data.json"
+          node -e "
+            const fs = require('fs');
+            const raw = fs.readFileSync(process.env.RUNNER_TEMP + '/data.json', 'utf8');
+            if (raw.length < 200) throw new Error('kun ' + raw.length + ' bytes - udgives ikke');
+            const j = JSON.parse(raw);
+            const f = j && j.frame;
+            if (!f || !f.time || !f.x || !f.p || !Number.isFinite(f.co2))
+              throw new Error('felter mangler - udgives ikke');
+            const age = (Date.now() - Date.parse(j.measured)) / 60000;
+            if (!(age < 180)) throw new Error('maalingen er ' + Math.round(age) + ' min gammel - udgives ikke');
+            console.log('ok: ' + f.time + ' DK, ' + Math.round(age) + ' min gammel');
+          "
+
+      # Bonus oven paa de friske tal, ligesom historikken: DK1- og DK2-priserne
+      # i kvarterer frem til i morgen aften, til "Kommende elpriser" og
+      # "Hvornaar er det billigst?" under tidslinjen. Browseren kalder aldrig
+      # Energinet for dem - den laeser kun prices.json herfra.
+      # Efter kl. 13 dansk tid venter scriptet paa morgendagens priser (de
+      # offentliggoeres 13-14 CET) med op til fire nye forsoeg a to minutter,
+      # og et HTTP 429 besvares med pause foer naeste forsoeg. Fejler det
+      # alligevel, udgives data.json stadig, og kortet viser en linje om at
+      # priserne mangler.
+      - name: Hent kommende priser
+        continue-on-error: true
+        timeout-minutes: 12
+        run: node prices.js "$RUNNER_TEMP/prices.json"
+
+      # Alder maales paa hvornaar filen sidst blev AENDRET, ikke paa klokken.
+      # Jobbet springer de fleste planlagte tider over, saa en tidsbaseret regel
+      # ("kun i lige timer") ville ramme ved siden af. Filens egen alder retter
+      # sig selv: uanset hvornaar jobbet faar lov at koere, fornyes historikken
+      # foerste gang den er for gammel.
+      - name: Skal historikken fornyes?
+        id: histcheck
+        run: |
+          if [ "${{ inputs.fornyhistorik }}" = "true" ]; then
+            echo "tvunget fornyelse valgt ved manuel start"
+            echo "refresh=yes" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ ! -f hist.json ]; then
+            echo "hist.json findes ikke - hentes"
+            echo "refresh=yes" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # git log lykkes (exit 0) med TOM uddata naar filen ikke har nogen
+          # commits endnu, saa "|| echo 0" faanger det ikke. Saet nulstillingen
+          # eksplicit i stedet for at stole paa at tom = 0 i en beregning.
+          last=$(git log -1 --format=%ct -- hist.json 2>/dev/null || true)
+          last=${last:-0}
+          age=$(( $(date -u +%s) - last ))
+          if [ "$last" = "0" ] || [ "$age" -gt 21600 ]; then
+            echo "historikken er $(( age / 3600 )) timer gammel - fornyes"
+            echo "refresh=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "historikken er $(( age / 60 )) min gammel - beholdes"
+            echo "refresh=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      # continue-on-error med vilje: historikken er en bonus oven paa de friske
+      # tal. Falder Energinet ud midt i de ~31 kald, skal data.json stadig
+      # opdateres og siden stadig udgives. Uden hist.json falder kortet tilbage
+      # til den historik der er bygget ind i index.html - aeldre, men korrekt.
+      - name: Hent 30 dages historik
+        id: hist
+        if: steps.histcheck.outputs.refresh == 'yes'
+        continue-on-error: true
+        timeout-minutes: 8
+        run: |
+          # koeres i RUNNER_TEMP: fetch.js skriver power_raw.json og history.json
+          # med faste navne i den mappe den startes fra. De maa ikke havne i
+          # arbejdstraeet, hvor et senere git add eller assemble kunne se dem.
+          cd "$RUNNER_TEMP"
+          node "$GITHUB_WORKSPACE/fetch.js"
+          node "$GITHUB_WORKSPACE/compact.js"
+          node -e "
+            const fs = require('fs');
+            const h = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/hist_compact.json', 'utf8'));
+            if (!Number.isInteger(h.n) || h.n < 600) throw new Error('kun ' + h.n + ' timer - udgives ikke');
+            for (const c of ['off','co2','wOff','wOn','sol','cen','dec','sum'])
+              if (!Array.isArray(h[c]) || h[c].length !== h.n) throw new Error('kolonne ' + c + ' passer ikke');
+            // t0 og off er dansk vaegur, ikke UTC. Sammenlign derfor med dansk
+            // vaegur ogsaa - ellers er svaret 1-2 timer forkert alt efter
+            // sommertid, og kan endda blive negativt.
+            const t = h.t0;
+            const end = Date.UTC(+t.slice(0,4), +t.slice(5,7)-1, +t.slice(8,10), +t.slice(11,13)) + h.off[h.n-1]*3600000;
+            const dk = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Copenhagen' }));
+            const nowDK = Date.UTC(dk.getFullYear(), dk.getMonth(), dk.getDate(), dk.getHours(), dk.getMinutes());
+            const lagH = (nowDK - end) / 3600000;
+            if (!(lagH >= 0)) throw new Error('slutter ' + Math.round(-lagH) + ' timer ude i fremtiden - udgives ikke');
+            if (!(lagH < 30)) throw new Error('slutter ' + Math.round(lagH) + ' timer tilbage - udgives ikke');
+            console.log('ok: ' + h.n + ' timer, slutter ' + Math.round(lagH*10)/10 + ' t tilbage');
+          "
+          cp "$RUNNER_TEMP/hist_compact.json" "$RUNNER_TEMP/hist.json"
+
+      - name: Commit hvis tallene har aendret sig
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # To koersler kan overlappe - en manuel start oven i en planlagt.
+          # Taber man kaploebet, nytter rebase ikke: begge sider har skrevet
+          # den samme ene linje i data.json, saa det giver altid en konflikt.
+          # For en genereret fil er svaret i stedet: tag den nyeste remote som
+          # udgangspunkt og laeg de friske tal ovenpaa. Ingen konflikt mulig.
+          #
+          # Bemaerk at filerne kopieres ind INDE i loekken, efter reset. Gjorde
+          # man det udenfor, ville "git reset --hard" i et nyt forsoeg spise dem.
+          for n in 1 2 3; do
+            cp "$RUNNER_TEMP/data.json" data.json
+            git add data.json
+            if [ -f "$RUNNER_TEMP/hist.json" ]; then
+              cp "$RUNNER_TEMP/hist.json" hist.json
+              git add hist.json
+            fi
+            if [ -f "$RUNNER_TEMP/prices.json" ]; then
+              cp "$RUNNER_TEMP/prices.json" prices.json
+              git add prices.json
+            fi
+
+            # stage FOERST og tjek saa indekset: daekker baade "uaendret" og
+            # "filen er ikke sporet endnu", som et blankt git diff ikke goer
+            if git diff --cached --quiet; then
+              echo "Uaendret."
+            else
+              if git diff --cached --name-only | grep -q '^hist.json$'; then
+                git commit -m "Data + historik $(date -u '+%Y-%m-%d %H:%M') UTC"
+              else
+                git commit -m "Data $(date -u '+%Y-%m-%d %H:%M') UTC"
+              fi
+            fi
+
+            # Hjerteslag: GitHub slaar planlagte koersler fra efter 60 dage uden
+            # aktivitet i repoet. Botten committer kun naar tallene aendrer sig,
+            # saa en lang flad periode ville lukke jobbet permanent. Et commit
+            # hver 20. dag holder det i live - ca. 18 ekstra commits om aaret.
+            days=$(( ( $(date -u +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+            if [ "$days" -ge 20 ]; then
+              date -u '+%Y-%m-%dT%H:%M:%SZ' > .github/sidste-koersel.txt
+              git add .github/sidste-koersel.txt
+              git commit -m "Hjerteslag (ingen dataaendring i $days dage)"
+            fi
+
+            if git diff --quiet HEAD origin/main 2>/dev/null; then
+              echo "Intet nyt at pushe."
+              exit 0
+            fi
+            if git push; then exit 0; fi
+
+            echo "push afvist - henter nyeste og laegger tallene ovenpaa ($n/3)"
+            git fetch -q origin main
+            git reset -q --hard origin/main
+          done
+          echo "::error::kunne ikke pushe efter 3 forsoeg"
+          exit 1
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: elnet-json
+          if-no-files-found: error
+          path: |
+            data.json
+            prices.json
+            hist.json
+
+  deploy:
+    needs: commit
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: cloudflare-production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: elnet-json
+          path: .
+      # npm ci koerer postinstall for esbuild (node install.js) og workerd
+      # (node install.js). De to scripts henter binarierne. Ingen
+      # --ignore-scripts. package-lock.json kommer foerst i et senere,
+      # saerskilt review. Se docs/cloudflare-migration.md.
+      - name: Udgiv til Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npm ci
+          node cloudflare/assemble.js
+          node -e "
+            const fs = require('fs');
+            for (const f of ['data.json', 'prices.json', 'hist.json']) {
+              const j = JSON.parse(fs.readFileSync('cloudflare/dist/' + f, 'utf8'));
+              if (f === 'hist.json' && !(j.n >= 600)) throw new Error(f + ' for kort');
+              if (!j) throw new Error(f + ' tom');
+            }
+          "
+          npm exec -- wrangler deploy --config cloudflare/wrangler.jsonc
