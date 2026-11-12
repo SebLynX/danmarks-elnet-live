@@ -10,12 +10,14 @@
    CORS is the requesting origin when it is on the allowlist, never
    "*". Credentials are not allowed. GET and OPTIONS only.
 
-   The allowlist matches worker/worker.js: exact origins only, plus
-   'null' for a map opened from disk. No subdomain wildcards.
+   The allowlist matches SNAP_ALLOW in worker/worker.js: exact origins
+   only, plus 'null' for a map opened from disk. No subdomain wildcards.
+   https://seblynx.github.io comes off this set after step C.
    ============================================================ */
 const FILES = { '/hist.json': 1, '/data.json': 1, '/prices.json': 1 };
 const ALLOW = new Set([
   'https://el.gridkort.dk',
+  'https://gridkort.dk',
   'https://seblynx.github.io',
   'https://expo.energinet.dk',
   'null'

@@ -47,21 +47,24 @@ Workers static assets, not a new Pages project. Cloudflare treats Pages as the l
 
 Static files on `el-gridkort`, not KV or R2. The pipeline already produces the three files. The Worker stores them as assets and the API reads that origin. A KV namespace would be another id to keep out of the repo, another secret, and the same bytes. Generating `hist.json` inside `gridkort-api` would duplicate `fetch.js` and `compact.js`.
 
-CORS on the JSON routes is an exact list. No subdomain wildcard.
+`/elnet/*` keeps the CORS allowlist from `main`, wildcards included: `https://*.gridkort.dk`, `https://gridkort.dk`, `https://seblynx.github.io`, `https://*.energinet.dk`, `https://energinet.dk`, and `null`. Those routes are not narrowed.
 
-Checked on 2026-11-12 by reading the public HTML:
+`/hist.json`, `/data.json`, `/prices.json`, and `cloudflare/site.js`, use an exact list. No subdomain wildcard.
 
-| Origin | Calls `api.gridkort.dk`? | On the list? |
+Checked on 2026-11-12:
+
+| Origin | What it does | Snapshot list? |
 |---|---|---|
-| `https://el.gridkort.dk` | Yes. `index.html` fetches `/elnet/now.json` and `/elnet/prices.json`. | Yes |
-| `https://expo.energinet.dk` | Yes. The EXPO build fetches the same two URLs. | Yes |
-| `https://seblynx.github.io` | The same `index.html` would. The host 301s to `el.gridkort.dk` before the page runs, so a browser on the live redirect never sends this origin. It stays on the list so a Pages copy served from that host can still read the API. | Yes |
-| `null` | Yes. A map opened from disk (`file://`) skips relative URLs and fetches the absolute API URLs. The response is public read-only JSON, and `Access-Control-Allow-Credentials` is not set, so allowing `null` does not expose a credentialed session. | Yes |
-| `https://gridkort.dk` and `https://www.gridkort.dk` | No. The HTML has zero `api.gridkort.dk` strings. | No |
-| `https://vind.gridkort.dk` | No. The HTML has zero `api.gridkort.dk` strings. | No |
-| `https://energinet.dk` (redirects to `https://www.energinet.dk`) | No. | No |
+| `https://el.gridkort.dk` | Fetches `/elnet/now.json` and `/elnet/prices.json`. | Yes |
+| `https://expo.energinet.dk` | The EXPO build fetches the same two URLs. | Yes |
+| `https://gridkort.dk` | Homepage line 230 sets `ELNET_DATA` to the raw `data.json` in this repo and fetches it. It does not call `api.gridkort.dk` today. It will, after its own PR, call `/data.json`. | Yes |
+| `https://www.gridkort.dk` | Redirects to `https://gridkort.dk/` and does not serve its own page. | No |
+| `https://seblynx.github.io` | 301s to `el.gridkort.dk` today. The same `index.html` would send this origin if Pages served it. Stays until step C, then comes off the snapshot list. | Yes, until step C |
+| `null` | A map opened from disk. The JSON is public and read-only, and credentials are not allowed. | Yes |
+| `https://vind.gridkort.dk` | Rescanned. No `raw.githubusercontent.com`, `github.io`, or `api.gridkort.dk` reference to this repo. | No |
+| `https://energinet.dk` | Redirects to `https://www.energinet.dk`. Does not call this API. | No |
 
-A random subdomain such as `https://evil.gridkort.dk` or `https://not.energinet.dk` gets no `Access-Control-Allow-Origin`.
+On the snapshot routes, `https://evil.gridkort.dk` and `https://not.energinet.dk` get no `Access-Control-Allow-Origin`. On `/elnet/*` those origins still match the wildcards from `main`.
 
 - The response header is that exact origin. It is never `*`.
 - `Access-Control-Allow-Credentials` is not set.
@@ -84,7 +87,7 @@ Do these before any DNS change. After step 3 the live site is still GitHub Pages
 2. **GitHub environment, not repository secrets.** Repo → Settings → Environments → New environment → name `cloudflare-production`.
    - Deployment branches: Selected branches → add `main` only.
    - Environment secrets (not repository secrets, not organization secrets): `CLOUDFLARE_API_TOKEN` (the CI token from step 1) and `CLOUDFLARE_ACCOUNT_ID` (the account id in the Workers & Pages URL). The names are all this repo stores.
-3. **Create Worker `el-gridkort` from `main` at the merged commit, on a clean GitHub-hosted runner.** Not from a laptop checkout of the branch. Not with `npx --yes`. The runner checks out that sha, runs `npm ci` (which needs the lockfile described under [Wrangler lockfile](#wrangler-lockfile)), then `npm exec -- wrangler deploy --config cloudflare/wrangler.jsonc`. That is the `deploy` job in `docs/proposed-workflows/update-data-cloudflare.yml`. Do not run it until step 8's review has accepted the workflow and the lockfile. The config name is `el-gridkort`. `workers_dev` is true. `preview_urls` is false. There is no `route`, no `routes`, and no `custom_domain`, so this does not change DNS. There is no dashboard build command and no Pages output directory: the asset directory is `cloudflare/dist`, produced by `assemble.js`, and `main` is `cloudflare/site.js`. Compatibility date in that config is `2026-11-12`. Logs are enabled and traces are sampled at 1%.
+3. **Create Worker `el-gridkort` only after a later pull request.** That pull request adds `package.json`, `package-lock.json`, and a manual-only workflow: `workflow_dispatch`, `main` only, GitHub-hosted runner, `npm ci`, then `wrangler deploy`. It is not the scheduled file in `docs/proposed-workflows/`. It gets its own security review. Steps 3 through 7 wait for that pull request and that review. There is no laptop deploy and no `npx --yes`. The config name is `el-gridkort`. `workers_dev` is true. `preview_urls` is false. There is no `route`, no `routes`, and no `custom_domain`, so the deploy does not change DNS. The asset directory is `cloudflare/dist`, produced by `assemble.js`, and `main` is `cloudflare/site.js`. Compatibility date in that config is `2026-11-12`. Logs are enabled and traces are sampled at 1%.
 4. **Confirm `workers.dev` is on** for `el-gridkort` (Settings → Domains & Routes). The hostname is only for your own checks. `gridkort-api` does not fetch it.
 5. **Service binding on the existing API Worker.** Workers & Pages → `gridkort-api` → Settings → Bindings → Add → Service binding.
    - Variable name: `DATA`
@@ -158,13 +161,15 @@ Searched the repo for `raw.githubusercontent.com`, `github.io`, `seblynx.github.
 | `index.html` | 3334 | `https://raw.githubusercontent.com/SebLynX/danmarks-elnet-live/main/prices.json` | Later fallback. Live prices and the relative file are tried first. | No |
 | EXPO built HTML | 2501, 2644, 2645, 3435 | the four URLs in the table above | The new URLs in that table | No. The source is not in this repo. Hand-upload, cutover step A. |
 | `test/spot.test.js` | 382 | asserts the prices URL list | Not a consumer | No |
-| `worker/worker.js` | allowlist | `https://el.gridkort.dk`, `https://seblynx.github.io`, `https://expo.energinet.dk`, `null` | Exact origins. No subdomain wildcard. | Yes |
+| `SebLynX/gridkort` homepage, served as `https://gridkort.dk/` | 230 (`const ELNET_DATA=…`) and the fetch at 372 | `https://raw.githubusercontent.com/SebLynX/danmarks-elnet-live/main/data.json` | `https://api.gridkort.dk/data.json`, in a separate pull request on that repo. This PR does not edit it. | No |
+| `worker/worker.js` | `/elnet/*` allowlist | same wildcards as `main` | Unchanged for those routes. | Restored |
+| `worker/worker.js` and `cloudflare/site.js` | snapshot allowlist | `https://el.gridkort.dk`, `https://gridkort.dk`, `https://seblynx.github.io`, `https://expo.energinet.dk`, `null` | Exact origins. `https://seblynx.github.io` is removed after step C. | Yes |
 | `README.md` | 10 | prose about the `github.io` redirect | Not a fetch | No |
 | `SERVER-SETUP.md` | 113–115 | prose that `hist.json` is fetched from the public repo | Not a fetch. The new source is this document. | No |
 
 ## CUTOVER
 
-Do this only after the setup list, including one successful run of the new workflow so `workers.dev` has fresh files, and after the curl checks pass. Each step has its own rollback. Roll back in reverse order if you stop halfway.
+Do this only after the setup list, including one successful run of the reviewed deploy so `workers.dev` has fresh files, and after the curl checks pass. Each step has its own rollback. If both B and C have been done and the site must come back, roll back C before B. Re-enabling Pages (custom domain and certificate) takes time. Removing the route while Pages is still off leaves a window of TLS errors or 404s.
 
 ### A. Hand-upload the EXPO build
 
@@ -183,22 +188,30 @@ Do not add a Custom Domain. Cloudflare will not create one on a hostname that al
 
 The record today is CNAME `el` → `seblynx.github.io`, DNS only (grey cloud). A lookup on 2026-11-12 still had 182 seconds of a 300 second TTL left. A [route](https://developers.cloudflare.com/workers/configuration/routing/routes/) runs only when that hostname is proxied. Edit the existing record in place, then attach the route. Nothing is deleted, so there is no negative cache.
 
-1. DNS → Records for `gridkort.dk` → edit `el`. Leave the type CNAME and the target `seblynx.github.io`. Set Proxy status to Proxied. Save. Resolvers that still hold the grey-cloud answer keep reaching GitHub directly until that TTL expires. New lookups hit Cloudflare, which still fetches GitHub, so both paths serve the current site.
-2. Workers & Pages → `el-gridkort` → Settings → Domains & Routes → Add → Route. Zone `gridkort.dk`, route `el.gridkort.dk/*`, Worker `el-gridkort`. Do not choose Custom Domain.
+Before the first edit: SSL/TLS → Overview for the zone `gridkort.dk`. The mode must be Full or Full (strict) ([SSL modes](https://developers.cloudflare.com/ssl/origin-configuration/ssl-modes/)). If it is Flexible or Off, stop. Do not proxy the record.
+
+1. DNS → Records for `gridkort.dk` → edit `el`. Leave the type CNAME and the target `seblynx.github.io`. Set Proxy status to Proxied. Save. Keep the time until the route in the next step is saved as short as you can. A proxied CNAME to `seblynx.github.io` with no Worker route does not, by itself, keep serving the current site. It depends on the SSL mode and on the name GitHub sees in SNI, and it can answer 526 or a redirect loop. If the site shows an error in this window, set Proxy status back to DNS only at once.
+2. Workers & Pages → `el-gridkort` → Settings → Domains & Routes → Add → Route. Zone `gridkort.dk`, route `el.gridkort.dk/*`, Worker `el-gridkort`. Do not choose Custom Domain. Set the route to **Fail closed** so a Worker error does not fall through to the origin. The script does not call `ctx.passThroughOnException()`, which is the fail-open path ([Go to origin on error](https://developers.cloudflare.com/workers/observability/errors/#go-to-origin-on-error)).
 3. `dig @1.1.1.1 el.gridkort.dk` should show Cloudflare addresses, and `curl -sI https://el.gridkort.dk/` should show `server: cloudflare` and `200`. Then check `/`, `/?lang=en` (same `index.html`), `/tv2` (one redirect to `/tv2/`, then `200`), `/tv2/`, `/robots.txt`, `/sitemap.xml`, `/llms.txt`, `/preview.png`, `/data.json`, `/hist.json`, `/prices.json`, and a missing path such as `/en` (status `404`, body is `404.html`, title "Siden findes ikke"). JSON responses to `Origin: https://expo.energinet.dk` carry that origin and `cache-control: no-store`, and do not carry `access-control-allow-credentials`.
 4. The LIVE badge on `https://el.gridkort.dk/` is green. That request still goes to `api.gridkort.dk/elnet/now.json`.
 
-**Rollback:** Remove the route `el.gridkort.dk/*` first. The proxied CNAME still points at `seblynx.github.io`, so Cloudflare sends traffic to GitHub Pages. Pages must still be on. Then, if you want the previous shape, edit the same CNAME and set Proxy status back to DNS only. Do not delete the record.
+**Rollback:** Do this only while Pages is still on (step C not done, or already rolled back). Remove the route `el.gridkort.dk/*` first. The record is again a proxied CNAME to `seblynx.github.io` with no route. That window has the same risk: 526 or a redirect loop, depending on SSL mode and SNI. If the site shows an error, set Proxy status back to DNS only at once. When the site answers from GitHub, leave the CNAME DNS only. Do not delete the record. Rolling this back after step C means re-enabling Pages first, including the custom domain and its certificate, which can take time. Until that certificate is back, visitors can see TLS errors or 404s. Roll back C before B.
 
 ### C. Disable GitHub Pages
 
+Before this step, GitHub → Settings → Pages → Verified domains must already list `el.gridkort.dk` ([verifying a custom domain](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/verifying-your-custom-domain-for-github-pages)). If it does not, add the TXT record GitHub shows and wait until the domain shows as verified. That stops another account from attaching the hostname to Pages after this site's Pages is turned off.
+
 Wait at least 5 minutes after step B. The CNAME TTL is 300 seconds, so a resolver can still be using the pre-change answer until then. After the wait, `dig` and `curl -sI https://el.gridkort.dk/` again and confirm `server: cloudflare` before you continue. Then: Repo → Settings → Pages → Build and deployment → Source: None. There is no `CNAME` file to delete. Leave the Pages custom-domain field empty if GitHub still shows one, so GitHub does not keep trying to claim `el.gridkort.dk` while the Worker route owns it.
+
+After Pages is off, edit the DNS record again so nothing points at GitHub. Change it from CNAME `seblynx.github.io` to a proxied AAAA `100::`, the [originless placeholder](https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/#originless-setups). Keep it proxied. The route still answers. Then remove `https://seblynx.github.io` from `SNAP_ALLOW` in `worker/worker.js` and from the set in `cloudflare/site.js`, and deploy those two scripts again.
 
 This stops `https://seblynx.github.io/danmarks-elnet-live/` from redirecting to the map. That redirect cannot be kept without leaving Pages on. The map itself is on `el.gridkort.dk`.
 
 **Rollback:** Settings → Pages → Deploy from a branch → `main` → folder `/ (root)`. Do not set the custom domain on Pages while the Worker still has `el.gridkort.dk`. The `github.io` URL will 301 to `el.gridkort.dk` again only if the custom domain is configured on Pages; skip that until a full DNS rollback (step B) is also done.
 
 ### D. Make the repo private
+
+Prerequisite, in a separate pull request on `SebLynX/gridkort`, not in this repo: change `ELNET_DATA` in the homepage (served today at `https://gridkort.dk/`, line 230) from `https://raw.githubusercontent.com/SebLynX/danmarks-elnet-live/main/data.json` to `https://api.gridkort.dk/data.json`. Merge and deploy that page first. A rescan of `https://vind.gridkort.dk/` on 2026-11-12 found no `raw.githubusercontent.com` or `github.io` reference to this repo. `https://www.gridkort.dk/` only redirects to `https://gridkort.dk/`.
 
 Repo → Settings → General → Danger Zone → Change repository visibility → Private.
 

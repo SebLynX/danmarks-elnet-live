@@ -62,7 +62,7 @@ test('snapshot routes 503 until DATA_ORIGIN is set, and do not call fetch', asyn
   assert.equal(calls.length, 0);
   assert.equal(r.headers.get('Access-Control-Allow-Origin'), 'https://expo.energinet.dk');
   assert.equal(r.headers.get('Access-Control-Allow-Credentials'), null);
-  assert.equal((await r.json()).error, 'DATA_ORIGIN is not set');
+  assert.equal((await r.json()).error, 'DATA binding is not set, and DATA_ORIGIN is not set');
   for (const bad of ['http://el-gridkort.example.workers.dev', 'https://user:pw@el-gridkort.example.workers.dev/hist.json', 'https://el-gridkort.example.workers.dev/subdir']) {
     const denied = await api.fetch(new Request('https://api.gridkort.dk/data.json'), { DATA_ORIGIN: bad }, ctx());
     assert.equal(denied.status, 503, bad);
@@ -96,10 +96,16 @@ test('GET /hist.json /data.json /prices.json returns the pipeline bytes with ref
   assert.equal(oldHost.headers.get('Access-Control-Allow-Origin'), 'https://seblynx.github.io');
   const own = await apiGet('/data.json', 'https://el.gridkort.dk', env); await settle();
   assert.equal(own.headers.get('Access-Control-Allow-Origin'), 'https://el.gridkort.dk');
-  for (const origin of ['https://evil.gridkort.dk', 'https://not.energinet.dk', 'https://vind.gridkort.dk', 'https://gridkort.dk']) {
+  const front = await apiGet('/data.json', 'https://gridkort.dk', env); await settle();
+  assert.equal(front.headers.get('Access-Control-Allow-Origin'), 'https://gridkort.dk');
+  for (const origin of ['https://evil.gridkort.dk', 'https://not.energinet.dk', 'https://vind.gridkort.dk', 'https://www.gridkort.dk']) {
     const denied = await apiGet('/prices.json', origin, env); await settle();
     assert.equal(denied.headers.get('Access-Control-Allow-Origin'), null, origin);
   }
+  const liveWild = await api.fetch(new Request('https://api.gridkort.dk/elnet/prices.json', { method: 'OPTIONS', headers: { Origin: 'https://vind.gridkort.dk' } }), env, ctx());
+  assert.equal(liveWild.headers.get('Access-Control-Allow-Origin'), 'https://vind.gridkort.dk');
+  const liveEnergi = await api.fetch(new Request('https://api.gridkort.dk/elnet/now.json', { method: 'OPTIONS', headers: { Origin: 'https://not.energinet.dk' } }), env, ctx());
+  assert.equal(liveEnergi.headers.get('Access-Control-Allow-Origin'), 'https://not.energinet.dk');
   const foreign = await apiGet('/prices.json', 'https://example.com', env); await settle();
   assert.equal(foreign.status, 200);
   assert.equal(foreign.headers.get('Access-Control-Allow-Origin'), null);
@@ -191,6 +197,8 @@ test('the site Worker serves the three JSON files with reflected CORS and passes
   assert.equal(opt.headers.get('Access-Control-Allow-Credentials'), null);
   assert.equal((await get('/data.json', 'https://example.com')).headers.get('Access-Control-Allow-Origin'), null);
   assert.equal((await get('/data.json', 'https://evil.gridkort.dk')).headers.get('Access-Control-Allow-Origin'), null);
+  assert.equal((await get('/data.json', 'https://gridkort.dk')).headers.get('Access-Control-Allow-Origin'), 'https://gridkort.dk');
+  assert.equal((await get('/data.json', 'https://www.gridkort.dk')).headers.get('Access-Control-Allow-Origin'), null);
   assert.equal((await get('/hist.json', 'null')).headers.get('Access-Control-Allow-Origin'), 'null');
   assert.equal((await get('/hist.json', 'https://expo.energinet.dk', 'POST')).status, 405);
   const page = await get('/index.html', 'https://expo.energinet.dk');

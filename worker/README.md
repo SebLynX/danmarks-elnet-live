@@ -25,9 +25,12 @@ falder tilbage på filerne fra GitHub-kørslen, hvis workeren ikke svarer.
   `DATA_ORIGIN` bruges kun når bindingen mangler, og må ikke være det `workers.dev`-navn.
 - `compactPrices()` er en kopi af funktionen i `prices.js`; `node --test` i repoets rod tjekker, at de to
   er ens, og kører workerens ruter under Node med en stub for Energinet og cachen (`test/worker.test.js`).
-- CORS er en fast liste: `https://el.gridkort.dk`, `https://seblynx.github.io`,
-  `https://expo.energinet.dk` og `null` (en fil åbnet fra disken). Ingen wildcard på underdomæner.
-  Ingen `Access-Control-Allow-Credentials`.
+- CORS på `/elnet/*` er den samme wildcard-liste som på `main`. De tre nye ruter
+  `/hist.json`, `/data.json` og `/prices.json` har en fast liste:
+  `https://el.gridkort.dk`, `https://gridkort.dk`, `https://seblynx.github.io`,
+  `https://expo.energinet.dk` og `null` (en fil åbnet fra disken). Ingen wildcard dér.
+  Ingen `Access-Control-Allow-Credentials`. `https://seblynx.github.io` tages af listen
+  efter cutover-trin C.
 - Gratisplanen tillader 100.000 kald om dagen. Kortet kalder én gang i minuttet pr. åben fane.
 
 Ændres filen her, skal den også udgives i Cloudflare. Der er ingen CI for det.

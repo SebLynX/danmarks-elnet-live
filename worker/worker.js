@@ -12,9 +12,10 @@
    costs freshness, never the feature.
 
    The same three pipeline files are also served here, unchanged, at
-   /hist.json, /data.json and /prices.json. They are read from
-   env.DATA_ORIGIN (the el-gridkort Worker's https origin, no path) so a
-   private repo does not take the EXPO build's copies with it.
+   /hist.json, /data.json and /prices.json. They are read from the
+   service binding env.DATA (Worker el-gridkort) first. env.DATA_ORIGIN
+   is only the fallback when that binding is absent. A private repo
+   does not take the EXPO build's copies with it.
    /elnet/now.json and /elnet/prices.json stay the live routes.
 
    Why a Worker at all: api.energidataservice.dk answers every
@@ -47,19 +48,31 @@ const WAIT_DEFAULT = 900, WAIT_MAX = 6 * 3600, LAST_TTL = 2 * 86400;
 const XK = ['DK1_DE', 'DK1_NL', 'DK1_GB', 'DK1_NO', 'DK1_SE', 'DK1_DK2', 'DK2_DE', 'DK2_SE', 'BH_SE'];
 const PK = ['DK1', 'DK2', 'DE', 'NO2', 'SE3', 'SE4'];
 
-/* Exact origins, no subdomain wildcards. Checked 2026-11-12: the live
-   el.gridkort.dk page and the EXPO build both fetch this host. The same
-   index.html is what seblynx.github.io would run; that host 301s to
-   el.gridkort.dk today. 'null' is a map opened from disk (file://).
-   The data is public and read-only, and credentials are not allowed.
-   gridkort.dk, vind.gridkort.dk and energinet.dk do not call this API. */
-const ALLOW = new Set([
+/* who may read the frame from a browser: the maps, the old GitHub
+   address, Energinet's internal hosting, and a copy opened from disk.
+   This list is only for the existing /elnet/* routes. It matches main. */
+const ALLOW = [
+  /^https:\/\/([a-z0-9-]+\.)*gridkort\.dk$/,
+  /^https:\/\/seblynx\.github\.io$/,
+  /^https:\/\/([a-z0-9-]+\.)*energinet\.dk$/,
+  /^null$/
+];
+const cors = origin => origin && ALLOW.some(re => re.test(origin))
+  ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' } : { 'Vary': 'Origin' };
+
+/* Exact origins for /hist.json, /data.json and /prices.json only.
+   No subdomain wildcards. 'null' is a map opened from disk: the JSON
+   is public and read-only, and credentials are not allowed.
+   https://seblynx.github.io comes off this set after step C
+   (docs/cloudflare-migration.md). */
+const SNAP_ALLOW = new Set([
   'https://el.gridkort.dk',
+  'https://gridkort.dk',
   'https://seblynx.github.io',
   'https://expo.energinet.dk',
   'null'
 ]);
-const cors = origin => origin && ALLOW.has(origin)
+const snapCors = origin => origin && SNAP_ALLOW.has(origin)
   ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' } : { 'Vary': 'Origin' };
 
 /* One dataset at a time. While a dataset's block marker is in the cache,
@@ -213,7 +226,7 @@ const SNAPSHOT_TTL = 60;
 const SNAPSHOTS = { '/hist.json': 'hist.json', '/data.json': 'data.json', '/prices.json': 'prices.json' };
 function snapshotOrigin(env) {
   const raw = env && typeof env.DATA_ORIGIN === 'string' ? env.DATA_ORIGIN.trim() : '';
-  if (!raw) return { error: 'DATA_ORIGIN is not set' };
+  if (!raw) return { error: 'DATA binding is not set, and DATA_ORIGIN is not set' };
   let u;
   try { u = new URL(raw); } catch (e) { return { error: 'DATA_ORIGIN must be an https origin' }; }
   if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash) return { error: 'DATA_ORIGIN must be an https origin' };
@@ -264,7 +277,8 @@ async function serveSnapshot(env, ctx, file, h) {
 
 export default {
   async fetch(req, env, ctx) {
-    const url = new URL(req.url), h = cors(req.headers.get('Origin'));
+    const url = new URL(req.url);
+    const h = SNAPSHOTS[url.pathname] ? snapCors(req.headers.get('Origin')) : cors(req.headers.get('Origin'));
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...h, 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '86400' } });
     if (req.method !== 'GET') return new Response('GET only', { status: 405, headers: h });
     if (SNAPSHOTS[url.pathname]) return serveSnapshot(env, ctx, SNAPSHOTS[url.pathname], h);
