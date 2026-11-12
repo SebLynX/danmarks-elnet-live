@@ -438,8 +438,13 @@ function envHasCloudflare(env) {
 }
 
 const DEPLOY_RUN = 'npm exec --no -- wrangler deploy --config cloudflare/wrangler.jsonc';
-const SECRET_RE = /secrets\.|toJSON\s*\(\s*secrets\s*\)/;
-const RUN_SECRET_RE = /CLOUDFLARE_|secrets\.|toJSON\s*\(\s*secrets\s*\)/;
+const CI_RUN = 'npm ci --ignore-scripts';
+const ASSEMBLE_RUN = 'node cloudflare/assemble.js';
+/* Checkout and setup-node are the only steps with no run. Every run
+   must be one of these three commands. */
+const ALLOWED_RUNS = new Set([CI_RUN, ASSEMBLE_RUN, DEPLOY_RUN]);
+const SECRET_RE = /\bsecrets\b/i;
+const RUN_SECRET_RE = /CLOUDFLARE_|\bsecrets\b/i;
 
 function walkValues(node, path, fn) {
   if (typeof node === 'string') { fn(node, path); return; }
@@ -504,13 +509,18 @@ function workflowProblems(src) {
       if (step.uses !== undefined && !/^[^@\s]+@[0-9a-f]{40}$/.test(String(step.uses))) {
         problems.push(name + ' uses is not a 40-hex pin: ' + step.uses);
       }
-      const run = String(step.run || '');
-      if (RUN_SECRET_RE.test(run)) problems.push(name + ' step run references a secret or CLOUDFLARE_');
-      if (/\bnpm ci\b/.test(run) && !run.includes('npm ci --ignore-scripts')) problems.push(name + ' npm ci without --ignore-scripts');
-      if (run.includes('npm ci --ignore-scripts')) ci = idx;
-      if (run.includes('assemble.js')) assemble = idx;
-      if (run.trim() === DEPLOY_RUN) deploy = idx;
-      else if (run.includes('wrangler deploy')) problems.push(name + ' deploy run is not the pinned command');
+      const hasRun = step.run !== undefined;
+      const run = String(step.run || '').trim();
+      if (hasRun) {
+        if (!ALLOWED_RUNS.has(run)) problems.push(name + ' run command is not allowlisted: ' + run);
+        if (run !== DEPLOY_RUN && run.includes('wrangler deploy')) problems.push(name + ' deploy run is not the pinned command');
+        if (RUN_SECRET_RE.test(run)) problems.push(name + ' step run references a secret or CLOUDFLARE_');
+      } else if (!/^actions\/(checkout|setup-node)@/.test(String(step.uses || ''))) {
+        problems.push(name + ' step is not checkout, setup-node, or an allowlisted run');
+      }
+      if (run === CI_RUN) ci = idx;
+      if (run === ASSEMBLE_RUN) assemble = idx;
+      if (run === DEPLOY_RUN) deploy = idx;
       if (step.permissions) problems.push(...permProblems(name + ' step ' + idx, step.permissions));
     });
     if (ci < 0) problems.push(name + ' has no npm ci --ignore-scripts step');
@@ -529,9 +539,12 @@ function workflowProblems(src) {
         if (!String(env.CLOUDFLARE_ACCOUNT_ID || '').includes('secrets.CLOUDFLARE_ACCOUNT_ID')) problems.push(name + ' deploy step missing CLOUDFLARE_ACCOUNT_ID');
       }
     });
-    const checkout = job.steps.find(step => String(step.uses || '').startsWith('actions/checkout@'));
-    const persist = checkout && checkout.with && checkout.with['persist-credentials'];
-    if (String(persist) !== 'false') problems.push(name + ' checkout persist-credentials is not false');
+    const checkouts = job.steps.filter(step => String(step.uses || '').startsWith('actions/checkout@'));
+    if (checkouts.length === 0) problems.push(name + ' has no checkout step');
+    checkouts.forEach(step => {
+      const persist = step.with && step.with['persist-credentials'];
+      if (String(persist) !== 'false') problems.push(name + ' checkout persist-credentials is not false');
+    });
     const setup = job.steps.find(step => String(step.uses || '').startsWith('actions/setup-node@'));
     const nodeVersion = setup && setup.with && setup.with['node-version'];
     if (!/^22\.\d+\.\d+$/.test(String(nodeVersion || ''))) problems.push(name + ' node-version is not an exact 22 patch');
@@ -573,7 +586,21 @@ test('workflow parser rejects a push trigger and a job-level Cloudflare token', 
   const write = yml.replace('      contents: read\n    steps:', '      contents: read\n      actions: write\n    steps:');
   assert.ok(workflowProblems(write).some(problem => problem.includes('actions: write')));
   const plainCi = yml.replace('npm ci --ignore-scripts', 'npm ci');
-  assert.ok(workflowProblems(plainCi).some(problem => problem.includes('npm ci without --ignore-scripts')));
+  assert.ok(workflowProblems(plainCi).some(problem => problem.includes('run command is not allowlisted')));
+  for (const extra of ['npm install', 'npm rebuild', 'npx wrangler deploy']) {
+    const added = yml.replace(
+      '        run: node cloudflare/assemble.js\n',
+      '        run: node cloudflare/assemble.js\n      - name: Extra\n        run: ' + extra + '\n'
+    );
+    assert.ok(workflowProblems(added).some(problem => problem.includes('run command is not allowlisted: ' + extra)), extra);
+  }
+  const toJson = yml.replace('run: node cloudflare/assemble.js', 'run: echo ${{ toJson(secrets) }}');
+  assert.ok(workflowProblems(toJson).some(problem => problem.includes('secrets reference outside deploy env')));
+  const secondCheckout = yml.replace(
+    '          persist-credentials: false\n',
+    '          persist-credentials: false\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5\n        with:\n          persist-credentials: true\n'
+  );
+  assert.ok(workflowProblems(secondCheckout).some(problem => problem.includes('checkout persist-credentials is not false')));
 
   const echoed = yml.replace('run: node cloudflare/assemble.js', 'run: echo $CLOUDFLARE_API_TOKEN');
   assert.ok(workflowProblems(echoed).some(problem => problem.includes('step run references a secret or CLOUDFLARE_')));
