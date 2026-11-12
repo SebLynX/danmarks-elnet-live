@@ -84,7 +84,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '22'
+          node-version: '22.23.5'
 
       # Hentes til RUNNER_TEMP, uden for arbejdstraeet. Saa kan filen laegges
       # paa plads igen efter en reset, og et halvt svar kan aldrig naa at
@@ -126,8 +126,10 @@ jobs:
       # foerste gang den er for gammel.
       - name: Skal historikken fornyes?
         id: histcheck
+        env:
+          FORNYHISTORIK: ${{ inputs.fornyhistorik }}
         run: |
-          if [ "${{ inputs.fornyhistorik }}" = "true" ]; then
+          if [ "$FORNYHISTORIK" = "true" ]; then
             echo "tvunget fornyelse valgt ved manuel start"
             echo "refresh=yes" >> "$GITHUB_OUTPUT"
             exit 0
@@ -271,7 +273,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '22'
+          node-version: '22.23.5'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: elnet-json
