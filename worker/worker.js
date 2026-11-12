@@ -11,6 +11,12 @@
    first and the pipeline's files second, so the Worker being down
    costs freshness, never the feature.
 
+   The same three pipeline files are also served here, unchanged, at
+   /hist.json, /data.json and /prices.json. They are read from
+   env.DATA_ORIGIN (the el-gridkort Worker's https origin, no path) so a
+   private repo does not take the EXPO build's copies with it.
+   /elnet/now.json and /elnet/prices.json stay the live routes.
+
    Why a Worker at all: api.energidataservice.dk answers every
    request that carries an Origin header (= every browser request)
    with an empty 200. A Worker is not a browser; it sends no Origin
@@ -42,10 +48,14 @@ const XK = ['DK1_DE', 'DK1_NL', 'DK1_GB', 'DK1_NO', 'DK1_SE', 'DK1_DK2', 'DK2_DE
 const PK = ['DK1', 'DK2', 'DE', 'NO2', 'SE3', 'SE4'];
 
 /* who may read the frame from a browser: the maps, the old GitHub
-   address, Energinet's internal hosting, and a copy opened from disk */
+   address, the Energinet EXPO build, Energinet's other hosts, and a copy
+   opened from disk. The header is the requesting origin itself, never "*".
+   Credentials are not allowed. expo.energinet.dk is also matched by the
+   energinet.dk rule; it is listed on its own so that allow stays obvious. */
 const ALLOW = [
   /^https:\/\/([a-z0-9-]+\.)*gridkort\.dk$/,
   /^https:\/\/seblynx\.github\.io$/,
+  /^https:\/\/expo\.energinet\.dk$/,
   /^https:\/\/([a-z0-9-]+\.)*energinet\.dk$/,
   /^null$/
 ];
@@ -192,11 +202,59 @@ async function buildPrices() {
   return { generated: new Date().toISOString(), source: 'Energinet (www.energidataservice.dk) · DayAheadPrices · CC BY 4.0 (via api.gridkort.dk)', unit: 'DKK/MWh', ...d };
 }
 
+/* Pipeline files published by the el-gridkort Worker. Not the live
+   /elnet/now.json and /elnet/prices.json routes: those still ask Energinet.
+   DATA_ORIGIN is an https origin with no path, for example
+   https://el-gridkort.<subdomain>.workers.dev */
+const SNAPSHOT_TTL = 60;
+const SNAPSHOTS = { '/hist.json': 'hist.json', '/data.json': 'data.json', '/prices.json': 'prices.json' };
+function snapshotOrigin(env) {
+  const raw = env && typeof env.DATA_ORIGIN === 'string' ? env.DATA_ORIGIN.trim() : '';
+  if (!raw) return { error: 'DATA_ORIGIN is not set' };
+  let u;
+  try { u = new URL(raw); } catch (e) { return { error: 'DATA_ORIGIN must be an https origin' }; }
+  if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash) return { error: 'DATA_ORIGIN must be an https origin' };
+  if (u.pathname !== '/' && u.pathname !== '') return { error: 'DATA_ORIGIN must be an https origin' };
+  return { origin: u.origin };
+}
+function snapHeaders(h) {
+  return { ...h, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+}
+async function loadSnapshot(file, origin) {
+  const r = await fetch(origin + '/' + file, {
+    method: 'GET', redirect: 'manual',
+    headers: { 'User-Agent': 'gridkort-api (gridkort.dk, hobby map)' },
+    signal: AbortSignal.timeout(8000)
+  });
+  if (r.status >= 300 && r.status < 400) throw new Error('redirect refused');
+  if (r.status !== 200) throw new Error('HTTP ' + r.status);
+  const body = await r.text();
+  if (!body.trim() || body.length > 2000000) throw new Error('unexpected snapshot size');
+  return body;
+}
+async function serveSnapshot(env, ctx, file, h) {
+  const where = snapshotOrigin(env);
+  if (!where.origin) return new Response(JSON.stringify({ error: where.error }), { status: 503, headers: snapHeaders(h) });
+  const cacheName = 'snapshot-' + file;
+  try {
+    const hit = await caches.default.match(key(cacheName));
+    if (hit) return new Response(await hit.text(), { status: 200, headers: snapHeaders(h) });
+    const body = await loadSnapshot(file, where.origin);
+    if (ctx && ctx.waitUntil) ctx.waitUntil(caches.default.put(key(cacheName),
+      new Response(body, { headers: { 'Cache-Control': 'public, max-age=' + SNAPSHOT_TTL } })));
+    return new Response(body, { status: 200, headers: snapHeaders(h) });
+  } catch (e) {
+    console.error(JSON.stringify({ message: 'snapshot failed', file, error: String(e && e.message || e) }));
+    return new Response(JSON.stringify({ error: 'snapshot unavailable' }), { status: 502, headers: snapHeaders(h) });
+  }
+}
+
 export default {
   async fetch(req, env, ctx) {
     const url = new URL(req.url), h = cors(req.headers.get('Origin'));
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...h, 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '86400' } });
     if (req.method !== 'GET') return new Response('GET only', { status: 405, headers: h });
+    if (SNAPSHOTS[url.pathname]) return serveSnapshot(env, ctx, SNAPSHOTS[url.pathname], h);
     if (url.pathname === '/') return new Response('gridkort.dk data service. Energinet Energi Data Service, cached. Map: https://el.gridkort.dk/\n', { headers: { ...h, 'Content-Type': 'text/plain; charset=utf-8' } });
     /* what this Cloudflare location is waiting for: one line per paused dataset */
     if (url.pathname === '/elnet/status') {
