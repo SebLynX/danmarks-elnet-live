@@ -1,0 +1,47 @@
+# Manuel udgivelse af Worker el-gridkort.
+# Erstatter ikke update-data.yml og koerer ikke ved push eller paa en plan.
+# Eneste start er Actions-fanen, og jobbet koerer kun paa refs/heads/main.
+# npm ci staar i sit eget trin og ser ingen Cloudflare-variabler.
+# --ignore-scripts: esbuild og workerd har postinstall, men binaererne
+# ligger i de valgfrie platformspakker, saa scriptene skal ikke koere.
+
+name: Udgiv el-gridkort
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: el-gridkort-manual-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: cloudflare-production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+
+      - name: Installer wrangler
+        run: npm ci --ignore-scripts
+
+      - name: Saml siden
+        run: node cloudflare/assemble.js
+
+      - name: Udgiv til Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm exec --no -- wrangler deploy --config cloudflare/wrangler.jsonc

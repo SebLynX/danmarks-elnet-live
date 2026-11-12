@@ -1,6 +1,6 @@
 # Cloudflare migration for el.gridkort.dk
 
-This repo is ready to be served from Cloudflare. The repo is already public. Merging this pull request is a push to `main`, and that push runs `.github/workflows/update-data.yml`, which is not changed here. That workflow publishes the whole checkout to GitHub Pages (`path: .`). After the next successful run, these new paths are reachable on the live site: `https://el.gridkort.dk/docs/cloudflare-migration.md`, `https://el.gridkort.dk/docs/proposed-workflows/update-data-cloudflare.yml`, `https://el.gridkort.dk/cloudflare/site.js`, `https://el.gridkort.dk/cloudflare/wrangler.jsonc`, `https://el.gridkort.dk/cloudflare/assemble.js`, and `https://el.gridkort.dk/test/cloudflare.test.js`. None of those files contain a token, an account id, or a secret. `index.html` still requests the same URLs. There is no `CNAME` file; the custom domain stays a Pages setting until cutover. No Cloudflare resource is created by this change. Wrangler is not a dependency of the repo.
+This repo is ready to be served from Cloudflare. The repo is already public. Merging this pull request is a push to `main`, and that push runs `.github/workflows/update-data.yml`, which is not changed here. That workflow publishes the whole checkout to GitHub Pages (`path: .`). After the next successful run, `package.json`, `package-lock.json`, and `.github/workflows/deploy-cloudflare.yml` are reachable on the live site, along with the files already published. None of those files contain a token, an account id, or a secret. The new workflow does not run on that push: its only trigger is `workflow_dispatch`, and its job runs only on `refs/heads/main`. `index.html` still requests the same URLs. There is no `CNAME` file; the custom domain stays a Pages setting until cutover. No Cloudflare resource is created by this change. The only dependency is the devDependency `wrangler` at exactly `4.160.1`.
 
 Checked against the live site on 2026-11-12.
 
@@ -8,7 +8,7 @@ Checked against the live site on 2026-11-12.
 
 `el.gridkort.dk` is a CNAME to `seblynx.github.io`. The zone `gridkort.dk` is already on Cloudflare (`chase.ns.cloudflare.com`, `nadia.ns.cloudflare.com`). The CNAME is DNS-only: responses come from GitHub (`server: GitHub.com`), not through the Cloudflare proxy.
 
-GitHub Pages publishes the whole repository (`path: .` in `.github/workflows/update-data.yml`) on every run, including when the data files did not change. There is no `CNAME` file and no build step. The map in `index.html` is already the built page. There is no `package.json`.
+GitHub Pages publishes the whole repository (`path: .` in `.github/workflows/update-data.yml`) on every run, including when the data files did not change. There is no `CNAME` file and no build step. The map in `index.html` is already the built page. `package.json` is private and lists one devDependency, `wrangler` at exactly `4.160.1`. The page itself has no dependency.
 
 The scheduled job (cron `7,22,37,52 * * * *`, plus `workflow_dispatch` and push to `main`) writes:
 
@@ -87,7 +87,7 @@ Do these before any DNS change. After step 3 the live site is still GitHub Pages
 2. **GitHub environment, not repository secrets.** Repo → Settings → Environments → New environment → name `cloudflare-production`.
    - Deployment branches: Selected branches → add `main` only.
    - Environment secrets (not repository secrets, not organization secrets): `CLOUDFLARE_API_TOKEN` (the CI token from step 1) and `CLOUDFLARE_ACCOUNT_ID` (the account id in the Workers & Pages URL). The names are all this repo stores.
-3. **Create Worker `el-gridkort` only after a later pull request.** That pull request adds `package.json`, `package-lock.json`, and a manual-only workflow: `workflow_dispatch`, `main` only, GitHub-hosted runner, `npm ci`, then `wrangler deploy`. It is not the scheduled file in `docs/proposed-workflows/`. It gets its own security review. Steps 3 through 7 wait for that pull request and that review. There is no laptop deploy and no `npx --yes`. The config name is `el-gridkort`. `workers_dev` is true. `preview_urls` is false. There is no `route`, no `routes`, and no `custom_domain`, so the deploy does not change DNS. The asset directory is `cloudflare/dist`, produced by `assemble.js`, and `main` is `cloudflare/site.js`. Compatibility date in that config is `2026-11-12`. Logs are enabled and traces are sampled at 1%.
+3. **Run `.github/workflows/deploy-cloudflare.yml`.** Actions → that workflow → Run workflow, branch `main`. Do this only after steps 1 and 2. The only trigger is `workflow_dispatch`. The job runs only when `github.ref == 'refs/heads/main'`, on `ubuntu-latest`, in the environment `cloudflare-production`. Permissions are `contents: read` at the top of the file and on the job. There is no `actions: write`. `npm ci --ignore-scripts` is its own step and has no Cloudflare environment variables. The following step runs `node cloudflare/assemble.js`. The deploy step is the only one that receives `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` from the environment secrets, and it runs `npm exec --no -- wrangler deploy --config cloudflare/wrangler.jsonc`. It is not the scheduled file in `docs/proposed-workflows/`. There is no laptop deploy and no `npx --yes`. The config name is `el-gridkort`. `workers_dev` is true. `preview_urls` is false. There is no `route`, no `routes`, and no `custom_domain`, so the deploy does not change DNS. The asset directory is `cloudflare/dist`, produced by `assemble.js`, and `main` is `cloudflare/site.js`. Compatibility date in that config is `2026-11-12`. Logs are enabled and traces are sampled at 1%. The first successful run creates the Worker.
 4. **Confirm `workers.dev` is on** for `el-gridkort` (Settings → Domains & Routes). The hostname is only for your own checks. `gridkort-api` does not fetch it.
 5. **Service binding on the existing API Worker.** Workers & Pages → `gridkort-api` → Settings → Bindings → Add → Service binding.
    - Variable name: `DATA`
@@ -214,7 +214,7 @@ Do not start this step until the 7-day soak in step B has finished. Step C must 
 
 The parked name plus the route is a fine permanent state. A Worker Custom Domain is optional, and only later, in a quiet hour. It is the one exception to "never delete the `el` record." The [routes](https://developers.cloudflare.com/workers/configuration/routing/routes/) page says to use a Custom Domain when the Worker is the whole site. To get there: delete the `el` CNAME and immediately add Custom Domain `el.gridkort.dk` on `el-gridkort`, then remove the route `el.gridkort.dk/*`. That delete-then-add moment can briefly leave no record. Resolvers may cache the negative answer for the zone SOA minimum, 1800 seconds. That is why it is optional.
 
-**Rollback of that Custom Domain:** Cloudflare allows a route on a hostname that already has a Custom Domain. The [routes](https://developers.cloudflare.com/workers/configuration/routing/routes/) page says routes take precedence if configured on the same hostname, and the [custom domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/#interaction-with-routes) page shows a route added on a hostname that already has a Custom Domain. Add the route `el.gridkort.dk/*` first, then remove the Custom Domain, then recreate the `el` CNAME to `parked.gridkort.dk` and set it proxied. Removing the Custom Domain deletes the DNS record Cloudflare created, so recreate that CNAME in the same minute. Delete `parked.gridkort.dk` only after a separate yes from Sebastian. Otherwise keep it.
+**Rollback of that Custom Domain:** Cloudflare allows a route on a hostname that already has a Custom Domain. The [routes](https://developers.cloudflare.com/workers/configuration/routing/routes/) page says routes take precedence if configured on the same hostname, and the [custom domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/#interaction-with-routes) page shows a route added on a hostname that already has a Custom Domain. Add the route `el.gridkort.dk/*` first, then remove the Custom Domain, then recreate the `el` CNAME to `parked.gridkort.dk` and set it proxied. Removing the Custom Domain deletes the DNS record Cloudflare created, so recreate that CNAME in the same minute. When a Worker Custom Domain is removed, also delete its leftover edge certificate under SSL/TLS → Edge Certificates. Cloudflare says the Advanced Certificate created for the Custom Domain is not deleted with it ([Certificates](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/#certificates)). Delete `parked.gridkort.dk` only after a separate yes from Sebastian. Otherwise keep it.
 
 This stops `https://seblynx.github.io/danmarks-elnet-live/` from redirecting to the map. That redirect cannot be kept without leaving Pages on. The map itself is on `el.gridkort.dk`.
 
@@ -248,25 +248,23 @@ Use this when Pages is off and `el` points at `parked.gridkort.dk` with the rout
 
 ## Wrangler lockfile
 
-Not in this pull request. A later change, with its own security review, adds a private `package.json` whose only dependency is `wrangler` at exactly `4.160.1`, and the `package-lock.json` from `npm install` of that file. `npm ci` in the deploy job installs from that lockfile. It runs two install scripts, and it must be allowed to:
+`package.json` is private. Its only dependency is the devDependency `wrangler` at exactly `4.160.1`. That is the `latest` tag on `https://registry.npmjs.org/wrangler`, published `2026-11-11T14:45:38.079Z`. `package-lock.json` is the install of that file (`npm` 10.9.9, lockfileVersion 3). Every `resolved` URL starts with `https://registry.npmjs.org/` and every package has an `integrity` hash.
 
-| Package (wrangler 4.160.1) | Script | What it does |
+Three packages in the tree set `hasInstallScript`:
+
+| Package | Role | Script |
 |---|---|---|
-| `esbuild@0.28.2` | `postinstall`: `node install.js` | Downloads the esbuild binary for the runner |
-| `workerd@1.20261110.1` | `postinstall`: `node install.js` | Downloads the workerd binary for the runner |
+| `esbuild@0.28.2` | dependency of wrangler | `postinstall`: `node install.js`, which downloads a binary only when the optional platform package is absent |
+| `workerd@1.20261110.1` | dependency of wrangler | `postinstall`: `node install.js`, same pattern |
+| `fsevents@2.3.3` | optional, `os: darwin` | install script. npm does not install it on `ubuntu-latest` |
 
-`wrangler` itself has no install script. `miniflare@5.20261110.1-beta` has no install script. Do not pass `--ignore-scripts`: without those two binaries, `wrangler deploy` cannot run. Do not add any other dependency in that change.
-
-Open items for that later deploy pull request, not for this one:
-
-- Run `npm ci` in its own step, with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` unset. The deploy step that follows is `npm exec --no -- wrangler deploy --config cloudflare/wrangler.jsonc`, so npm does not fetch a package that is not in the lockfile.
-- Drop `actions: write` from the `commit` job. The current proposed file grants it so `upload-artifact` can run. The later review decides whether that permission stays.
+`wrangler@4.160.1` has no install script. `miniflare@5.20261110.1-beta` has no install script. The workflow runs `npm ci --ignore-scripts` in its own step, with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` unset. The Linux binaries are files inside `@esbuild/linux-x64@0.28.2` and `@cloudflare/workerd-linux-64@1.20261110.1`, which `npm ci` installs without running scripts. Checked on 2026-11-12, with those variables unset: `npm ci --ignore-scripts`, then `npx --no wrangler deploy --dry-run --config cloudflare/wrangler.jsonc`. Wrangler 4.160.1 read 13 files from `cloudflare/dist` and exited 0 at `--dry-run: exiting now`. The deploy step that follows install is `npm exec --no -- wrangler deploy --config cloudflare/wrangler.jsonc`, so npm does not fetch a package that is not in the lockfile. This workflow has no `actions: write`.
 
 ## What was tested here, and what a preview still has to show
 
 `node --test` runs the existing tests and `test/cloudflare.test.js`. The new tests load `worker/worker.js` and `cloudflare/site.js` under Node with a stubbed `fetch` and cache. They check the three snapshot routes, the reflected CORS, the missing `DATA_ORIGIN` case, the redirect refusal, the cache, that `/elnet/prices.json` is still the live route, and that `assemble.js` copies `index.html`, `404.html`, `tv2/index.html`, `robots.txt`, `sitemap.xml`, `llms.txt`, `preview.png`, and the three JSON files byte for byte. There is no package script named `build`. `node cloudflare/assemble.js` is the whole build: it copies the page that is already built.
 
-`npx --yes wrangler@4.160.1 dev --config cloudflare/wrangler.jsonc --local` (wrangler 4.160.1, not installed into the repo) was run against `cloudflare/dist`. It parsed 1 redirect rule and 3 header rules. On that local server:
+`npx --yes wrangler@4.160.1 dev --config cloudflare/wrangler.jsonc --local` was run against `cloudflare/dist` before wrangler was a dependency of the repo. That preview is not the deploy path. Deploy uses the lockfile, not `npx --yes`. It parsed 1 redirect rule and 3 header rules. On that local server:
 
 - `GET /` and `GET /?lang=en` are `200` `index.html`, with the canonical URL, `og:image`, `og:locale:alternate`, the JSON-LD block, and `max-image-preview:large`.
 - `GET /tv2` is one `301` to `/tv2/`, and `GET /tv2/` is `200`. The `_redirects` line and `html_handling` do not produce a second hop.

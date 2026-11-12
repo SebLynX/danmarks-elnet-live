@@ -245,3 +245,30 @@ test('assemble.js copies the published site unchanged and adds only Cloudflare r
   assert.ok(fs.readFileSync(path.join(dist, 'sitemap.xml'), 'utf8').includes('https://el.gridkort.dk/'));
   assert.ok(fs.readFileSync(path.join(dist, 'llms.txt'), 'utf8').includes('?lang=en'));
 });
+
+test('deploy-cloudflare.yml is manual, read-only, and splits install from deploy', () => {
+  const yml = read('.github/workflows/deploy-cloudflare.yml');
+  const header = yml.split(/^jobs:/m)[0];
+  assert.match(header, /workflow_dispatch/);
+  assert.equal(/^\s*(schedule|push|pull_request):/m.test(header), false);
+  assert.match(yml, /if: github\.ref == 'refs\/heads\/main'/);
+  assert.match(yml, /environment: cloudflare-production/);
+  assert.match(yml, /contents: read/);
+  assert.equal(yml.includes('contents: write'), false);
+  assert.equal(yml.includes('actions: write'), false);
+  const steps = yml.split(/\n {6}- /);
+  const ciStep = steps.find(step => step.includes('npm ci --ignore-scripts'));
+  const deployStep = steps.find(step => step.includes('npm exec --no -- wrangler deploy --config cloudflare/wrangler.jsonc'));
+  assert.ok(ciStep);
+  assert.ok(deployStep);
+  assert.equal(ciStep.includes('CLOUDFLARE_'), false);
+  assert.match(deployStep, /secrets\.CLOUDFLARE_API_TOKEN/);
+  assert.match(deployStep, /secrets\.CLOUDFLARE_ACCOUNT_ID/);
+  for (const uses of yml.match(/uses: \S+/g)) {
+    assert.match(uses, /@[0-9a-f]{40}$/);
+  }
+  const pkg = JSON.parse(read('package.json'));
+  assert.deepEqual(pkg.dependencies, undefined);
+  assert.deepEqual(Object.keys(pkg.devDependencies), ['wrangler']);
+  assert.equal(pkg.devDependencies.wrangler, '4.160.1');
+});
