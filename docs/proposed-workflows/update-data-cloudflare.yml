@@ -60,9 +60,9 @@ concurrency:
 # en branch-regel der kun tillader main). Workers Scripts:Edit kan ikke
 # begraenses til et enkelt script.
 #
-# wrangler installeres med npm ci fra en package-lock.json. Den fil er
-# ikke med i dette PR. Se docs/cloudflare-migration.md. Uden den fejler
-# deploy med vilje.
+# wrangler installeres med npm ci --ignore-scripts fra package-lock.json.
+# Se docs/cloudflare-migration.md. Deploy-trinnet er det eneste med
+# Cloudflare-variabler.
 permissions:
   contents: read
 
@@ -72,7 +72,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
-      actions: write          # upload-artifact
+      # Ingen actions: write. upload-artifact bruger ACTIONS_RUNTIME_TOKEN,
+      # som runneren saetter, ikke GITHUB_TOKENs actions-scope.
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -83,7 +84,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '22'
+          node-version: '22.23.5'
 
       # Hentes til RUNNER_TEMP, uden for arbejdstraeet. Saa kan filen laegges
       # paa plads igen efter en reset, og et halvt svar kan aldrig naa at
@@ -125,8 +126,10 @@ jobs:
       # foerste gang den er for gammel.
       - name: Skal historikken fornyes?
         id: histcheck
+        env:
+          FORNYHISTORIK: ${{ inputs.fornyhistorik }}
         run: |
-          if [ "${{ inputs.fornyhistorik }}" = "true" ]; then
+          if [ "$FORNYHISTORIK" = "true" ]; then
             echo "tvunget fornyelse valgt ved manuel start"
             echo "refresh=yes" >> "$GITHUB_OUTPUT"
             exit 0
@@ -270,21 +273,17 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '22'
+          node-version: '22.23.5'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: elnet-json
           path: .
-      # npm ci koerer postinstall for esbuild (node install.js) og workerd
-      # (node install.js). De to scripts henter binarierne. Ingen
-      # --ignore-scripts. package-lock.json kommer foerst i et senere,
-      # saerskilt review. Se docs/cloudflare-migration.md.
-      - name: Udgiv til Cloudflare
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Eget trin, uden CLOUDFLARE_API_TOKEN og CLOUDFLARE_ACCOUNT_ID.
+      # --ignore-scripts: binaererne ligger i de valgfrie platformspakker.
+      - name: Installer wrangler
+        run: npm ci --ignore-scripts
+      - name: Saml siden
         run: |
-          npm ci
           node cloudflare/assemble.js
           node -e "
             const fs = require('fs');
@@ -294,4 +293,8 @@ jobs:
               if (!j) throw new Error(f + ' tom');
             }
           "
-          npm exec -- wrangler deploy --config cloudflare/wrangler.jsonc
+      - name: Udgiv til Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npm exec --no -- wrangler deploy --config cloudflare/wrangler.jsonc

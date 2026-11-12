@@ -245,3 +245,433 @@ test('assemble.js copies the published site unchanged and adds only Cloudflare r
   assert.ok(fs.readFileSync(path.join(dist, 'sitemap.xml'), 'utf8').includes('https://el.gridkort.dk/'));
   assert.ok(fs.readFileSync(path.join(dist, 'llms.txt'), 'utf8').includes('?lang=en'));
 });
+
+function indentOf(line) {
+  return line.match(/^ */)[0].length;
+}
+
+function stripComment(line) {
+  let out = '';
+  let quote = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      out += c;
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") { quote = c; out += c; continue; }
+    if (c === '#') break;
+    out += c;
+  }
+  return out.trimEnd();
+}
+
+function splitKey(text) {
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quote) { if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'") { quote = c; continue; }
+    if (c === ':' && (i === text.length - 1 || text[i + 1] === ' ' || text[i + 1] === '\t')) {
+      return { key: text.slice(0, i).trim(), rest: text.slice(i + 1).trim() };
+    }
+  }
+  return null;
+}
+
+function unquote(text) {
+  if ((text.startsWith("'") && text.endsWith("'")) || (text.startsWith('"') && text.endsWith('"'))) return text.slice(1, -1);
+  return text;
+}
+
+/* A one-line `{ key: value, ... }` map. `${{ }}` is one token, so the
+   braces inside an expression do not close the map. */
+function parseFlow(text) {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return null;
+  const inner = trimmed.slice(1, -1);
+  const parts = [];
+  let cur = '';
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (quote) {
+      cur += c;
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") { quote = c; cur += c; continue; }
+    if (c === '$' && inner.slice(i, i + 3) === '${{') {
+      const end = inner.indexOf('}}', i + 3);
+      if (end < 0) return null;
+      cur += inner.slice(i, end + 2);
+      i = end + 1;
+      continue;
+    }
+    if (c === '{' || c === '[') { depth++; cur += c; continue; }
+    if (c === '}' || c === ']') { depth--; cur += c; continue; }
+    if (c === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; continue; }
+    cur += c;
+  }
+  if (cur.trim()) parts.push(cur.trim());
+  const obj = {};
+  for (const part of parts) {
+    if (!part) continue;
+    const kv = splitKey(part);
+    if (!kv) return null;
+    const nested = kv.rest.startsWith('{') ? parseFlow(kv.rest) : null;
+    obj[kv.key] = nested || unquote(kv.rest);
+  }
+  return obj;
+}
+
+function parseNode(lines, start, indent) {
+  let i = start;
+  while (i < lines.length && (lines[i].trim() === '' || /^\s*#/.test(lines[i]))) i++;
+  if (i >= lines.length || indentOf(lines[i]) < indent) return { node: {}, next: i };
+  const first = stripComment(lines[i]).trim();
+  if (first.startsWith('- ')) return parseSequence(lines, i, indent);
+  const map = {};
+  while (i < lines.length) {
+    if (lines[i].trim() === '' || /^\s*#/.test(lines[i])) { i++; continue; }
+    const ind = indentOf(lines[i]);
+    if (ind < indent) break;
+    if (ind !== indent) throw new Error('line ' + (i + 1) + ': expected indent ' + indent);
+    const text = stripComment(lines[i]).trim();
+    if (text.startsWith('- ')) throw new Error('line ' + (i + 1) + ': list item in a mapping');
+    const assigned = assignKey(map, text, lines, i, indent);
+    i = assigned.next;
+  }
+  return { node: map, next: i };
+}
+
+function parseSequence(lines, start, indent) {
+  const seq = [];
+  let i = start;
+  while (i < lines.length) {
+    if (lines[i].trim() === '' || /^\s*#/.test(lines[i])) { i++; continue; }
+    const ind = indentOf(lines[i]);
+    if (ind < indent) break;
+    if (ind !== indent) throw new Error('line ' + (i + 1) + ': expected indent ' + indent);
+    const text = stripComment(lines[i]).trim();
+    if (!text.startsWith('- ')) throw new Error('line ' + (i + 1) + ': expected a list item');
+    const rest = text.slice(2).trim();
+    const keyIndent = indent + 2;
+    if (rest === '') {
+      const nested = parseNode(lines, i + 1, keyIndent);
+      seq.push(nested.node);
+      i = nested.next;
+      continue;
+    }
+    const parts = splitKey(rest);
+    if (!parts) { seq.push(unquote(rest)); i++; continue; }
+    const map = {};
+    let assigned = assignKey(map, rest, lines, i, keyIndent);
+    i = assigned.next;
+    while (i < lines.length) {
+      if (lines[i].trim() === '' || /^\s*#/.test(lines[i])) { i++; continue; }
+      const ind2 = indentOf(lines[i]);
+      if (ind2 < keyIndent) break;
+      if (ind2 !== keyIndent) throw new Error('line ' + (i + 1) + ': expected indent ' + keyIndent);
+      const text2 = stripComment(lines[i]).trim();
+      if (text2.startsWith('- ')) break;
+      assigned = assignKey(map, text2, lines, i, keyIndent);
+      i = assigned.next;
+    }
+    seq.push(map);
+  }
+  return { node: seq, next: i };
+}
+
+function assignKey(map, text, lines, lineIndex, keyIndent) {
+  const parts = splitKey(text);
+  if (!parts) throw new Error('line ' + (lineIndex + 1) + ': expected a key');
+  const { key, rest } = parts;
+  if (rest === '|' || rest === '|-' || rest === '|+' || rest === '>' || rest === '>-' || rest === '>+') {
+    const body = [];
+    let i = lineIndex + 1;
+    let blockIndent = null;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (line.trim() === '') { body.push(''); i++; continue; }
+      const ind = indentOf(line);
+      if (blockIndent === null) blockIndent = ind;
+      if (ind < blockIndent) break;
+      body.push(line.slice(blockIndent));
+      i++;
+    }
+    map[key] = body.join('\n').replace(/\n+$/, '');
+    return { next: i };
+  }
+  if (rest === '') {
+    const nested = parseNode(lines, lineIndex + 1, keyIndent + 2);
+    map[key] = nested.node;
+    return { next: nested.next };
+  }
+  if (rest.startsWith('{')) {
+    const flow = parseFlow(rest);
+    if (!flow) throw new Error('line ' + (lineIndex + 1) + ': unparsed flow map');
+    map[key] = flow;
+    return { next: lineIndex + 1 };
+  }
+  map[key] = unquote(rest);
+  return { next: lineIndex + 1 };
+}
+
+function permProblems(where, perms) {
+  if (!perms || typeof perms !== 'object' || Array.isArray(perms)) return [where + ' permissions missing'];
+  const problems = [];
+  const keys = Object.keys(perms);
+  if (keys.length !== 1 || keys[0] !== 'contents') problems.push(where + ' permissions are not only contents');
+  if (String(perms.contents) !== 'read') problems.push(where + ' contents is not read');
+  for (const [key, value] of Object.entries(perms)) {
+    if (String(value) === 'write') problems.push(where + ' grants ' + key + ': write');
+  }
+  return problems;
+}
+
+function envHasCloudflare(env) {
+  if (!env || typeof env !== 'object' || Array.isArray(env)) return false;
+  return Object.keys(env).some(key => key.startsWith('CLOUDFLARE_'));
+}
+
+const DEPLOY_RUN = 'npm exec --no -- wrangler deploy --config cloudflare/wrangler.jsonc';
+const CI_RUN = 'npm ci --ignore-scripts';
+const ASSEMBLE_RUN = 'node cloudflare/assemble.js';
+/* Checkout and setup-node are the only steps with no run. Every run
+   must be one of these three commands. */
+const ALLOWED_RUNS = new Set([CI_RUN, ASSEMBLE_RUN, DEPLOY_RUN]);
+const CHECKOUT_USES = 'actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5';
+const SETUP_NODE_USES = 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020';
+const WORKFLOW_KEYS = new Set(['name', 'on', 'permissions', 'concurrency', 'jobs']);
+const CONCURRENCY_KEYS = new Set(['group', 'cancel-in-progress']);
+const JOB_KEYS = new Set(['if', 'runs-on', 'timeout-minutes', 'environment', 'permissions', 'steps']);
+const STEP_KEYS = new Set(['name', 'uses', 'with', 'run', 'env']);
+const CHECKOUT_WITH_KEYS = new Set(['persist-credentials']);
+const SETUP_NODE_WITH_KEYS = new Set(['node-version']);
+const DEPLOY_ENV_KEYS = new Set(['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']);
+const SECRET_RE = /\bsecrets\b/i;
+const RUN_SECRET_RE = /CLOUDFLARE_|\bsecrets\b/i;
+
+function unknownKeyProblems(where, obj, allowed) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return [where + ' is not a map'];
+  const problems = [];
+  for (const key of Object.keys(obj)) {
+    if (!allowed.has(key)) problems.push(where + ' has unknown key ' + key);
+  }
+  return problems;
+}
+
+function walkValues(node, path, fn) {
+  if (typeof node === 'string') { fn(node, path); return; }
+  if (Array.isArray(node)) {
+    node.forEach((item, i) => walkValues(item, path + '[' + i + ']', fn));
+    return;
+  }
+  if (node && typeof node === 'object') {
+    for (const [key, value] of Object.entries(node)) {
+      if (SECRET_RE.test(key)) fn(key, path + '.' + key);
+      walkValues(value, path + '.' + key, fn);
+    }
+  }
+}
+
+function isAllowedSecretPath(doc, path) {
+  const match = path.match(/^\.jobs\.([^.[\]]+)\.steps\[(\d+)\]\.env\.(CLOUDFLARE_API_TOKEN|CLOUDFLARE_ACCOUNT_ID)$/);
+  if (!match) return false;
+  const step = doc.jobs[match[1]].steps[Number(match[2])];
+  return String(step.run || '').trim() === DEPLOY_RUN;
+}
+
+/* Indentation parse of a GitHub Actions workflow. An empty list means
+   the file matches the deploy rules. */
+function workflowProblems(src) {
+  let doc;
+  try {
+    doc = parseNode(String(src).split('\n'), 0, 0).node;
+  } catch (err) {
+    return ['parse: ' + err.message];
+  }
+  const problems = [];
+  const on = doc.on;
+  if (!on || typeof on !== 'object' || Array.isArray(on)) problems.push('on: missing');
+  else {
+    const keys = Object.keys(on);
+    if (!keys.includes('workflow_dispatch')) problems.push('on: missing workflow_dispatch');
+    for (const key of keys) {
+      if (key !== 'workflow_dispatch') problems.push('on: has ' + key);
+    }
+  }
+  problems.push(...unknownKeyProblems('workflow', doc, WORKFLOW_KEYS));
+  if (doc.concurrency) problems.push(...unknownKeyProblems('concurrency', doc.concurrency, CONCURRENCY_KEYS));
+  if (doc.on && doc.on.workflow_dispatch && typeof doc.on.workflow_dispatch === 'object') {
+    problems.push(...unknownKeyProblems('workflow_dispatch', doc.on.workflow_dispatch, new Set()));
+  }
+  if (envHasCloudflare(doc.env)) problems.push('workflow env has CLOUDFLARE_');
+  problems.push(...permProblems('workflow', doc.permissions));
+  walkValues(doc, '', (value, path) => {
+    if (SECRET_RE.test(value) && !isAllowedSecretPath(doc, path)) problems.push('secrets reference outside deploy env: ' + path);
+  });
+  const jobs = doc.jobs;
+  if (!jobs || typeof jobs !== 'object' || Array.isArray(jobs)) {
+    problems.push('jobs missing');
+    return problems;
+  }
+  for (const [name, job] of Object.entries(jobs)) {
+    problems.push(...unknownKeyProblems(name, job, JOB_KEYS));
+    if (job['runs-on'] !== 'ubuntu-latest') problems.push(name + ' runs-on is not ubuntu-latest');
+    if (String(job.if || '') !== "github.ref == 'refs/heads/main'") problems.push(name + ' if is not exactly github.ref == refs/heads/main');
+    if (String(job.environment || '') !== 'cloudflare-production') problems.push(name + ' environment is not cloudflare-production');
+    if (envHasCloudflare(job.env)) problems.push(name + ' job env has CLOUDFLARE_');
+    problems.push(...permProblems(name, job.permissions));
+    if (!Array.isArray(job.steps)) { problems.push(name + ' steps missing'); continue; }
+    let ci = -1;
+    let assemble = -1;
+    let deploy = -1;
+    job.steps.forEach((step, idx) => {
+      problems.push(...unknownKeyProblems(name + ' step ' + idx, step, STEP_KEYS));
+      if (step.uses !== undefined && step.uses !== CHECKOUT_USES && step.uses !== SETUP_NODE_USES) {
+        problems.push(name + ' uses is not the current pin: ' + step.uses);
+      }
+      if (step.uses === CHECKOUT_USES) problems.push(...unknownKeyProblems(name + ' checkout with', step.with, CHECKOUT_WITH_KEYS));
+      if (step.uses === SETUP_NODE_USES) problems.push(...unknownKeyProblems(name + ' setup-node with', step.with, SETUP_NODE_WITH_KEYS));
+      const hasRun = step.run !== undefined;
+      const run = String(step.run || '').trim();
+      if (step.env !== undefined && run !== DEPLOY_RUN) problems.push(name + ' step env is only allowed on the deploy step');
+      if (run === DEPLOY_RUN) problems.push(...unknownKeyProblems(name + ' deploy env', step.env, DEPLOY_ENV_KEYS));
+      if (hasRun) {
+        if (!ALLOWED_RUNS.has(run)) problems.push(name + ' run command is not allowlisted: ' + run);
+        if (run !== DEPLOY_RUN && run.includes('wrangler deploy')) problems.push(name + ' deploy run is not the pinned command');
+        if (RUN_SECRET_RE.test(run)) problems.push(name + ' step run references a secret or CLOUDFLARE_');
+      } else if (!/^actions\/(checkout|setup-node)@/.test(String(step.uses || ''))) {
+        problems.push(name + ' step is not checkout, setup-node, or an allowlisted run');
+      }
+      if (run === CI_RUN) ci = idx;
+      if (run === ASSEMBLE_RUN) assemble = idx;
+      if (run === DEPLOY_RUN) deploy = idx;
+      if (step.permissions) problems.push(...permProblems(name + ' step ' + idx, step.permissions));
+    });
+    if (ci < 0) problems.push(name + ' has no npm ci --ignore-scripts step');
+    if (assemble < 0) problems.push(name + ' has no assemble step');
+    if (deploy < 0) problems.push(name + ' has no deploy step');
+    if (!(ci >= 0 && assemble >= 0 && deploy >= 0 && ci < deploy && assemble < deploy)) {
+      problems.push(name + ' ci and assemble must come before deploy');
+    }
+    job.steps.forEach((step, idx) => {
+      const blob = JSON.stringify(step);
+      const hasSecret = blob.includes('CLOUDFLARE_API_TOKEN') || blob.includes('CLOUDFLARE_ACCOUNT_ID');
+      if (hasSecret && idx !== deploy) problems.push(name + ' CLOUDFLARE secret outside the deploy step');
+      if (idx === deploy) {
+        const env = step.env || {};
+        if (!String(env.CLOUDFLARE_API_TOKEN || '').includes('secrets.CLOUDFLARE_API_TOKEN')) problems.push(name + ' deploy step missing CLOUDFLARE_API_TOKEN');
+        if (!String(env.CLOUDFLARE_ACCOUNT_ID || '').includes('secrets.CLOUDFLARE_ACCOUNT_ID')) problems.push(name + ' deploy step missing CLOUDFLARE_ACCOUNT_ID');
+      }
+    });
+    const checkouts = job.steps.filter(step => String(step.uses || '').startsWith('actions/checkout@'));
+    if (checkouts.length === 0) problems.push(name + ' has no checkout step');
+    checkouts.forEach(step => {
+      const persist = step.with && step.with['persist-credentials'];
+      if (String(persist) !== 'false') problems.push(name + ' checkout persist-credentials is not false');
+    });
+    const setup = job.steps.find(step => String(step.uses || '').startsWith('actions/setup-node@'));
+    const nodeVersion = setup && setup.with && setup.with['node-version'];
+    if (!/^22\.\d+\.\d+$/.test(String(nodeVersion || ''))) problems.push(name + ' node-version is not an exact 22 patch');
+  }
+  return problems;
+}
+
+test('deploy-cloudflare.yml is a manual main-only deploy', () => {
+  const yml = read('.github/workflows/deploy-cloudflare.yml');
+  assert.deepEqual(workflowProblems(yml), []);
+  const pkg = JSON.parse(read('package.json'));
+  assert.deepEqual(pkg.dependencies, undefined);
+  assert.deepEqual(Object.keys(pkg.devDependencies), ['wrangler']);
+  assert.equal(pkg.devDependencies.wrangler, '4.160.1');
+});
+
+test('workflow parser rejects a push trigger and a job-level Cloudflare token', () => {
+  const yml = read('.github/workflows/deploy-cloudflare.yml');
+  const withPush = yml.replace('  workflow_dispatch:\n', '  workflow_dispatch:\n  push:\n    branches: [main]\n');
+  const pushProblems = workflowProblems(withPush);
+  assert.ok(pushProblems.some(problem => problem === 'on: has push'), pushProblems.join('; '));
+
+  const moved = yml
+    .replace('    environment: cloudflare-production\n', '    environment: cloudflare-production\n    env:\n      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n')
+    .replace('        env:\n          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}\n          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n', '');
+  const envProblems = workflowProblems(moved);
+  assert.ok(envProblems.some(problem => problem.includes('job env has CLOUDFLARE_')), envProblems.join('; '));
+  assert.ok(envProblems.some(problem => problem.includes('missing CLOUDFLARE_API_TOKEN')), envProblems.join('; '));
+
+  const notEqual = yml.replace("github.ref == 'refs/heads/main'", "github.ref != 'refs/heads/main'");
+  assert.ok(workflowProblems(notEqual).some(problem => problem.includes('if is not exactly')));
+  const always = yml.replace("github.ref == 'refs/heads/main'", "github.ref == 'refs/heads/main' || always()");
+  assert.ok(workflowProblems(always).some(problem => problem.includes('if is not exactly')));
+  const orTrue = yml.replace("github.ref == 'refs/heads/main'", "github.ref == 'refs/heads/main' || true");
+  assert.ok(workflowProblems(orTrue).some(problem => problem.includes('if is not exactly')));
+
+  const unpinned = yml.replace(CHECKOUT_USES, 'actions/checkout@v4');
+  assert.ok(workflowProblems(unpinned).some(problem => problem.includes('uses is not the current pin')));
+  const otherCheckout = yml.replace(CHECKOUT_USES, 'actions/checkout@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  assert.ok(workflowProblems(otherCheckout).some(problem => problem.includes('uses is not the current pin: actions/checkout@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')));
+  const otherSetup = yml.replace(SETUP_NODE_USES, 'actions/setup-node@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+  assert.ok(workflowProblems(otherSetup).some(problem => problem.includes('uses is not the current pin: actions/setup-node@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')));
+  const checkoutRef = yml.replace('          persist-credentials: false\n', '          persist-credentials: false\n          ref: main\n');
+  assert.ok(workflowProblems(checkoutRef).some(problem => problem.includes('unknown key ref')));
+  const checkoutRepo = yml.replace('          persist-credentials: false\n', '          persist-credentials: false\n          repository: other/repo\n');
+  assert.ok(workflowProblems(checkoutRepo).some(problem => problem.includes('unknown key repository')));
+  const stepShell = yml.replace('      - name: Installer wrangler\n        run:', '      - name: Installer wrangler\n        shell: bash\n        run:');
+  assert.ok(workflowProblems(stepShell).some(problem => problem.includes('unknown key shell')));
+  const workDir = yml.replace('      - name: Saml siden\n        run:', '      - name: Saml siden\n        working-directory: cloudflare\n        run:');
+  assert.ok(workflowProblems(workDir).some(problem => problem.includes('unknown key working-directory')));
+  const defaults = yml.replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash\n');
+  assert.ok(workflowProblems(defaults).some(problem => problem.includes('unknown key defaults')));
+  const container = yml.replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    container: ubuntu\n');
+  assert.ok(workflowProblems(container).some(problem => problem.includes('unknown key container')));
+  const services = yml.replace('    runs-on: ubuntu-latest\n', '    runs-on: ubuntu-latest\n    services:\n      redis:\n        image: redis\n');
+  assert.ok(workflowProblems(services).some(problem => problem.includes('unknown key services')));
+  const selfHosted = yml.replace('runs-on: ubuntu-latest', 'runs-on: self-hosted');
+  assert.ok(workflowProblems(selfHosted).some(problem => problem.includes('runs-on is not ubuntu-latest')));
+  const nodeOptions = yml.replace(
+    '          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n',
+    '          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}\n          NODE_OPTIONS: --experimental-vm-modules\n'
+  );
+  assert.ok(workflowProblems(nodeOptions).some(problem => problem.includes('unknown key NODE_OPTIONS')));
+  const write = yml.replace('      contents: read\n    steps:', '      contents: read\n      actions: write\n    steps:');
+  assert.ok(workflowProblems(write).some(problem => problem.includes('actions: write')));
+  const plainCi = yml.replace('npm ci --ignore-scripts', 'npm ci');
+  assert.ok(workflowProblems(plainCi).some(problem => problem.includes('run command is not allowlisted')));
+  for (const extra of ['npm install', 'npm rebuild', 'npx wrangler deploy']) {
+    const added = yml.replace(
+      '        run: node cloudflare/assemble.js\n',
+      '        run: node cloudflare/assemble.js\n      - name: Extra\n        run: ' + extra + '\n'
+    );
+    assert.ok(workflowProblems(added).some(problem => problem.includes('run command is not allowlisted: ' + extra)), extra);
+  }
+  const toJson = yml.replace('run: node cloudflare/assemble.js', 'run: echo ${{ toJson(secrets) }}');
+  assert.ok(workflowProblems(toJson).some(problem => problem.includes('secrets reference outside deploy env')));
+  const secondCheckout = yml.replace(
+    '          persist-credentials: false\n',
+    '          persist-credentials: false\n      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5\n        with:\n          persist-credentials: true\n'
+  );
+  assert.ok(workflowProblems(secondCheckout).some(problem => problem.includes('checkout persist-credentials is not false')));
+
+  const echoed = yml.replace('run: node cloudflare/assemble.js', 'run: echo $CLOUDFLARE_API_TOKEN');
+  assert.ok(workflowProblems(echoed).some(problem => problem.includes('step run references a secret or CLOUDFLARE_')));
+  const dumped = yml.replace('run: node cloudflare/assemble.js', 'run: echo ${{ toJSON(secrets) }}');
+  assert.ok(workflowProblems(dumped).some(problem => problem.includes('step run references a secret or CLOUDFLARE_')));
+  assert.ok(workflowProblems(dumped).some(problem => problem.includes('secrets reference outside deploy env')));
+
+  const noEnv = yml.replace('    environment: cloudflare-production\n', '');
+  assert.ok(workflowProblems(noEnv).some(problem => problem.includes('environment is not cloudflare-production')));
+  const otherCmd = yml.replace(DEPLOY_RUN, 'npm exec -- wrangler deploy --config cloudflare/wrangler.jsonc');
+  assert.ok(workflowProblems(otherCmd).some(problem => problem.includes('deploy run is not the pinned command')));
+  const flow = yml.replace(
+    '    environment: cloudflare-production\n',
+    '    environment: cloudflare-production\n    env: { CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }} }\n'
+  );
+  const flowProblems = workflowProblems(flow);
+  assert.ok(flowProblems.some(problem => problem.includes('job env has CLOUDFLARE_')), flowProblems.join('; '));
+  assert.ok(flowProblems.some(problem => problem.includes('secrets reference outside deploy env')), flowProblems.join('; '));
+});
