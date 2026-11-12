@@ -13,3 +13,5 @@ cloudflare/dist/
 
 # Local wrangler dev state. Not part of the site.
 .wrangler/
+.dev.vars*
+.env*

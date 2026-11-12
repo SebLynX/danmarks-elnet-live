@@ -92,12 +92,41 @@ test('GET /hist.json /data.json /prices.json returns the pipeline bytes with ref
   }
   const disk = await apiGet('/hist.json', 'null', env); await settle();
   assert.equal(disk.headers.get('Access-Control-Allow-Origin'), 'null');
+  const oldHost = await apiGet('/data.json', 'https://seblynx.github.io', env); await settle();
+  assert.equal(oldHost.headers.get('Access-Control-Allow-Origin'), 'https://seblynx.github.io');
   const own = await apiGet('/data.json', 'https://el.gridkort.dk', env); await settle();
   assert.equal(own.headers.get('Access-Control-Allow-Origin'), 'https://el.gridkort.dk');
+  for (const origin of ['https://evil.gridkort.dk', 'https://not.energinet.dk', 'https://vind.gridkort.dk', 'https://gridkort.dk']) {
+    const denied = await apiGet('/prices.json', origin, env); await settle();
+    assert.equal(denied.headers.get('Access-Control-Allow-Origin'), null, origin);
+  }
   const foreign = await apiGet('/prices.json', 'https://example.com', env); await settle();
   assert.equal(foreign.status, 200);
   assert.equal(foreign.headers.get('Access-Control-Allow-Origin'), null);
   assert.equal((await foreign.text()).includes('"prices.json"'), true);
+});
+
+test('a service binding is used instead of fetch() when env.DATA is set', async () => {
+  fresh();
+  answer = () => { throw new Error('public fetch must not run'); };
+  const seen = [];
+  const env = {
+    DATA_ORIGIN: ORIGIN,
+    DATA: { fetch: async (req) => { seen.push(req.url); return new Response(fileBody('hist.json'), { status: 200 }); } }
+  };
+  const r = await apiGet('/hist.json', 'https://el.gridkort.dk', env); await settle();
+  assert.equal(r.status, 200);
+  assert.equal(await r.text(), fileBody('hist.json'));
+  assert.equal(calls.length, 0);
+  assert.equal(seen.length, 1);
+  assert.equal(new URL(seen[0]).pathname, '/hist.json');
+  await apiGet('/hist.json', 'https://el.gridkort.dk', env); await settle();
+  assert.equal(seen.length, 1, 'the binding answer is cached');
+  fresh();
+  const bad = { DATA: { fetch: async () => new Response('no', { status: 500 }) } };
+  const failed = await apiGet('/data.json', 'https://expo.energinet.dk', bad); await settle();
+  assert.equal(failed.status, 502);
+  assert.equal((await failed.json()).error, 'snapshot unavailable');
 });
 
 test('a snapshot is cached: the second GET does not fetch DATA_ORIGIN again', async () => {
@@ -161,6 +190,8 @@ test('the site Worker serves the three JSON files with reflected CORS and passes
   assert.equal(opt.headers.get('Access-Control-Allow-Methods'), 'GET');
   assert.equal(opt.headers.get('Access-Control-Allow-Credentials'), null);
   assert.equal((await get('/data.json', 'https://example.com')).headers.get('Access-Control-Allow-Origin'), null);
+  assert.equal((await get('/data.json', 'https://evil.gridkort.dk')).headers.get('Access-Control-Allow-Origin'), null);
+  assert.equal((await get('/hist.json', 'null')).headers.get('Access-Control-Allow-Origin'), 'null');
   assert.equal((await get('/hist.json', 'https://expo.energinet.dk', 'POST')).status, 405);
   const page = await get('/index.html', 'https://expo.energinet.dk');
   assert.equal(page.status, 200);
@@ -194,7 +225,10 @@ test('assemble.js copies the published site unchanged and adds only Cloudflare r
   assert.match(cfg, /"not_found_handling": "404-page"/);
   assert.match(cfg, /"html_handling": "auto-trailing-slash"/);
   assert.match(cfg, /"\/hist\.json", "\/data\.json", "\/prices\.json"/);
-  assert.equal(/"route"/.test(cfg), false, 'the config must not attach el.gridkort.dk');
+  assert.equal(cfg.includes('"route"'), false, 'the config must not attach el.gridkort.dk');
+  assert.equal(cfg.includes('"routes"'), false);
+  assert.equal(cfg.includes('custom_domain'), false);
+  assert.match(cfg, /"preview_urls": false/);
   const html = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
   assert.ok(html.includes('https://el.gridkort.dk/preview.png'));
   assert.ok(html.includes("statsNote: 'Anonymous visitor statistics via Cloudflare Web Analytics – no cookies.'"));

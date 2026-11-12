@@ -47,19 +47,19 @@ const WAIT_DEFAULT = 900, WAIT_MAX = 6 * 3600, LAST_TTL = 2 * 86400;
 const XK = ['DK1_DE', 'DK1_NL', 'DK1_GB', 'DK1_NO', 'DK1_SE', 'DK1_DK2', 'DK2_DE', 'DK2_SE', 'BH_SE'];
 const PK = ['DK1', 'DK2', 'DE', 'NO2', 'SE3', 'SE4'];
 
-/* who may read the frame from a browser: the maps, the old GitHub
-   address, the Energinet EXPO build, Energinet's other hosts, and a copy
-   opened from disk. The header is the requesting origin itself, never "*".
-   Credentials are not allowed. expo.energinet.dk is also matched by the
-   energinet.dk rule; it is listed on its own so that allow stays obvious. */
-const ALLOW = [
-  /^https:\/\/([a-z0-9-]+\.)*gridkort\.dk$/,
-  /^https:\/\/seblynx\.github\.io$/,
-  /^https:\/\/expo\.energinet\.dk$/,
-  /^https:\/\/([a-z0-9-]+\.)*energinet\.dk$/,
-  /^null$/
-];
-const cors = origin => origin && ALLOW.some(re => re.test(origin))
+/* Exact origins, no subdomain wildcards. Checked 2026-11-12: the live
+   el.gridkort.dk page and the EXPO build both fetch this host. The same
+   index.html is what seblynx.github.io would run; that host 301s to
+   el.gridkort.dk today. 'null' is a map opened from disk (file://).
+   The data is public and read-only, and credentials are not allowed.
+   gridkort.dk, vind.gridkort.dk and energinet.dk do not call this API. */
+const ALLOW = new Set([
+  'https://el.gridkort.dk',
+  'https://seblynx.github.io',
+  'https://expo.energinet.dk',
+  'null'
+]);
+const cors = origin => origin && ALLOW.has(origin)
   ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' } : { 'Vary': 'Origin' };
 
 /* One dataset at a time. While a dataset's block marker is in the cache,
@@ -204,8 +204,11 @@ async function buildPrices() {
 
 /* Pipeline files published by the el-gridkort Worker. Not the live
    /elnet/now.json and /elnet/prices.json routes: those still ask Energinet.
-   DATA_ORIGIN is an https origin with no path, for example
-   https://el-gridkort.<subdomain>.workers.dev */
+   Prefer env.DATA, a service binding to el-gridkort. Plain fetch() to that
+   Worker's workers.dev hostname on the same account fails; see
+   https://developers.cloudflare.com/workers/runtime-apis/fetch/
+   DATA_ORIGIN is only the fallback when the binding is absent, and it must
+   be an https origin with no path that is not a same-account Worker. */
 const SNAPSHOT_TTL = 60;
 const SNAPSHOTS = { '/hist.json': 'hist.json', '/data.json': 'data.json', '/prices.json': 'prices.json' };
 function snapshotOrigin(env) {
@@ -220,30 +223,40 @@ function snapshotOrigin(env) {
 function snapHeaders(h) {
   return { ...h, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
 }
-async function loadSnapshot(file, origin) {
-  const r = await fetch(origin + '/' + file, {
-    method: 'GET', redirect: 'manual',
-    headers: { 'User-Agent': 'gridkort-api (gridkort.dk, hobby map)' },
-    signal: AbortSignal.timeout(8000)
-  });
+async function readSnapshot(r) {
   if (r.status >= 300 && r.status < 400) throw new Error('redirect refused');
   if (r.status !== 200) throw new Error('HTTP ' + r.status);
   const body = await r.text();
   if (!body.trim() || body.length > 2000000) throw new Error('unexpected snapshot size');
   return body;
 }
-async function serveSnapshot(env, ctx, file, h) {
+async function fetchSnapshot(env, file) {
+  if (env && env.DATA && typeof env.DATA.fetch === 'function') {
+    return readSnapshot(await env.DATA.fetch(new Request('https://el-gridkort.internal/' + file, { method: 'GET' })));
+  }
   const where = snapshotOrigin(env);
-  if (!where.origin) return new Response(JSON.stringify({ error: where.error }), { status: 503, headers: snapHeaders(h) });
+  if (!where.origin) {
+    const err = new Error(where.error);
+    err.code = 503;
+    throw err;
+  }
+  return readSnapshot(await fetch(where.origin + '/' + file, {
+    method: 'GET', redirect: 'manual',
+    headers: { 'User-Agent': 'gridkort-api (gridkort.dk, hobby map)' },
+    signal: AbortSignal.timeout(8000)
+  }));
+}
+async function serveSnapshot(env, ctx, file, h) {
   const cacheName = 'snapshot-' + file;
   try {
     const hit = await caches.default.match(key(cacheName));
     if (hit) return new Response(await hit.text(), { status: 200, headers: snapHeaders(h) });
-    const body = await loadSnapshot(file, where.origin);
+    const body = await fetchSnapshot(env, file);
     if (ctx && ctx.waitUntil) ctx.waitUntil(caches.default.put(key(cacheName),
       new Response(body, { headers: { 'Cache-Control': 'public, max-age=' + SNAPSHOT_TTL } })));
     return new Response(body, { status: 200, headers: snapHeaders(h) });
   } catch (e) {
+    if (e && e.code === 503) return new Response(JSON.stringify({ error: e.message }), { status: 503, headers: snapHeaders(h) });
     console.error(JSON.stringify({ message: 'snapshot failed', file, error: String(e && e.message || e) }));
     return new Response(JSON.stringify({ error: 'snapshot unavailable' }), { status: 502, headers: snapHeaders(h) });
   }

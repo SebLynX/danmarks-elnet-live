@@ -17,13 +17,23 @@ falder tilbage på filerne fra GitHub-kørslen, hvis workeren ikke svarer.
   og `prices.json` serverer den sidst gode serie, så længe den rækker ud over nu.
 - `https://api.gridkort.dk/elnet/status` viser, hvilke datasæt dette Cloudflare-sted venter på, til hvornår
   og hvad Energinet svarede.
+- `GET /hist.json`, `GET /data.json` og `GET /prices.json` serverer de tre pipeline-filer
+  (samme bytes som på el-gridkort). De er ikke de levende ruter `/elnet/now.json` og
+  `/elnet/prices.json`. Kilden er service bindingen `env.DATA` til Workeren `el-gridkort`.
+  `fetch()` til den Workers `workers.dev`-navn på samme konto duer ikke
+  ([Worker-to-Worker fetch](https://developers.cloudflare.com/workers/runtime-apis/fetch/)).
+  `DATA_ORIGIN` bruges kun når bindingen mangler, og må ikke være det `workers.dev`-navn.
 - `compactPrices()` er en kopi af funktionen i `prices.js`; `node --test` i repoets rod tjekker, at de to
   er ens, og kører workerens ruter under Node med en stub for Energinet og cachen (`test/worker.test.js`).
-- CORS kun for `*.gridkort.dk`, `seblynx.github.io`, `*.energinet.dk` og filer åbnet fra disken (`null`).
+- CORS er en fast liste: `https://el.gridkort.dk`, `https://seblynx.github.io`,
+  `https://expo.energinet.dk` og `null` (en fil åbnet fra disken). Ingen wildcard på underdomæner.
+  Ingen `Access-Control-Allow-Credentials`.
 - Gratisplanen tillader 100.000 kald om dagen. Kortet kalder én gang i minuttet pr. åben fane.
 
-Ændres filen her, skal den også udgives i Cloudflare. Der er ingen CI for det: enten
-Workers & Pages → gridkort-api → Edit code → indsæt `worker.js` → Deploy, eller fra en maskine
-med `npx wrangler deploy worker/worker.js --name gridkort-api` og en API-token med
-Workers Scripts: Edit (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`). Ruten
-`api.gridkort.dk/*` er sat op i kontoen og følger med workeren.
+Ændres filen her, skal den også udgives i Cloudflare. Der er ingen CI for det.
+Workers & Pages → gridkort-api → Deployments: skriv versions-id'et på den udgave der
+kører, ned, før du skifter. Rollback er den række. Behold den compatibility date og de
+flags, workeren allerede har. Edit code → indsæt `worker.js` → Deploy. Ingen CLI.
+Bindingen sættes under Settings → Bindings → Service binding, variabelnavn `DATA`,
+service `el-gridkort`, før den nye script tages i brug. Ruten `api.gridkort.dk/*`
+er sat op i kontoen og skal ikke ændres. Opsætningen står i `docs/cloudflare-migration.md`.

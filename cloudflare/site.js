@@ -10,19 +10,17 @@
    CORS is the requesting origin when it is on the allowlist, never
    "*". Credentials are not allowed. GET and OPTIONS only.
 
-   The allowlist matches worker/worker.js. expo.energinet.dk is also
-   covered by the energinet.dk rule; it is listed on its own so the
-   EXPO requirement stays obvious.
+   The allowlist matches worker/worker.js: exact origins only, plus
+   'null' for a map opened from disk. No subdomain wildcards.
    ============================================================ */
 const FILES = { '/hist.json': 1, '/data.json': 1, '/prices.json': 1 };
-const ALLOW = [
-  /^https:\/\/([a-z0-9-]+\.)*gridkort\.dk$/,
-  /^https:\/\/seblynx\.github\.io$/,
-  /^https:\/\/expo\.energinet\.dk$/,
-  /^https:\/\/([a-z0-9-]+\.)*energinet\.dk$/,
-  /^null$/
-];
-const cors = origin => origin && ALLOW.some(re => re.test(origin))
+const ALLOW = new Set([
+  'https://el.gridkort.dk',
+  'https://seblynx.github.io',
+  'https://expo.energinet.dk',
+  'null'
+]);
+const cors = origin => origin && ALLOW.has(origin)
   ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' } : { 'Vary': 'Origin' };
 
 export default {

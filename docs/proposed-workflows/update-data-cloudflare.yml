@@ -55,25 +55,33 @@ concurrency:
   group: el-gridkort-deploy
   cancel-in-progress: false
 
-# Kun det der skal til for at committe filerne. Ingen pages, ingen id-token.
-# CLOUDFLARE_API_TOKEN ligger som Actions-secret og maa kun have
-# Account / Workers Scripts / Edit, helst begraenset til scriptet el-gridkort.
+# To job. commit maa skrive til main. deploy maa kun laese, og koerer kun
+# paa refs/heads/main i environment cloudflare-production (secrets der, med
+# en branch-regel der kun tillader main). Workers Scripts:Edit kan ikke
+# begraenses til et enkelt script.
+#
+# wrangler installeres med npm ci fra en package-lock.json. Den fil er
+# ikke med i dette PR. Se docs/cloudflare-migration.md. Uden den fejler
+# deploy med vilje.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  update:
+  commit:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: write          # upload-artifact
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           # Historikkens alder tjekkes med git log -- hist.json.
           # En shallow checkout faar seneste data-commit til at se ud som
           # hist.jsons sidste aendring, saa historikken fornyes for sent.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
 
@@ -239,16 +247,44 @@ jobs:
           echo "::error::kunne ikke pushe efter 3 forsoeg"
           exit 1
 
-      # wrangler er ikke en afhaengighed i repoet. Versionen er laast, saa
-      # jobbet ikke henter en ny major den dag nogen udgiver den.
-      # Tokenet saettes kun her og skrives ikke ud. Deployen rammer navnet
-      # i cloudflare/wrangler.jsonc (el-gridkort) og roerer ikke gridkort-api
-      # og ikke DNS.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: elnet-json
+          if-no-files-found: error
+          path: |
+            data.json
+            prices.json
+            hist.json
+
+  deploy:
+    needs: commit
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: cloudflare-production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: elnet-json
+          path: .
+      # npm ci koerer postinstall for esbuild (node install.js) og workerd
+      # (node install.js). De to scripts henter binarierne. Ingen
+      # --ignore-scripts. package-lock.json kommer foerst i et senere,
+      # saerskilt review. Se docs/cloudflare-migration.md.
       - name: Udgiv til Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          npm ci
           node cloudflare/assemble.js
           node -e "
             const fs = require('fs');
@@ -258,4 +294,4 @@ jobs:
               if (!j) throw new Error(f + ' tom');
             }
           "
-          npx --yes wrangler@4.160.1 deploy --config cloudflare/wrangler.jsonc
+          npm exec -- wrangler deploy --config cloudflare/wrangler.jsonc
