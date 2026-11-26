@@ -201,12 +201,16 @@ Pages, og den adresse sender `Access-Control-Allow-Origin: *`. Derfor må selv e
 er åbnet fra skrivebordet, læse den.
 
 Du kan sende filen videre som en almindelig vedhæftning. Modtageren får friske tal, så
-længe workflowet her kører. Der kræves internetforbindelse.
+længe workflowet her kører. Der kræves internetforbindelse. Filen har Cloudflare Web
+Analytics' beacon med, som er besøgsstatistikken for el.gridkort.dk. Bruges kopien et andet
+sted, så tag beaconen og linjen om den i info-panelet ud, se [Besøgsstatistik](#besøgsstatistik)
+nedenfor.
 
 ### 3. Hoste det selv
 
-Læg `index.html` på en webserver. Vil du have en kopi, der ikke afhænger af GitHub, så
-læs videre.
+Læg `index.html` på en webserver, og tag besøgsstatistikken ud først: beaconen og linjen om
+den i info-panelet (se [Besøgsstatistik](#besøgsstatistik)). Vil du have en kopi, der ikke
+afhænger af GitHub, så læs videre.
 
 ---
 
@@ -227,6 +231,20 @@ være helt uafhængig af GitHub, skal du selv holde `data.json` og `prices.json`
 Browseren kalder aldrig `api.energidataservice.dk` — hverken direkte eller gennem en
 reverse proxy. Energinet beder om, at sitet selv henter data og serverer dem, så den
 tidligere `/api/`-mulighed er taget ud: alle tal kommer fra filer, et script har skrevet.
+
+### Besøgsstatistik
+
+`index.html`, `404.html` og `tv2/index.html` har Cloudflare Web Analytics' beacon med. Det
+er besøgsstatistikken for el.gridkort.dk: anonym og uden cookies. Hoster du en kopi et
+andet sted, også som fork på GitHub Pages, så tag den ud:
+
+- I alle tre filer: slet alt fra `<!-- Cloudflare Web Analytics -->` til og med
+  `<!-- End Cloudflare Web Analytics -->`. Det står lige før `</body>`, som skal blive stående.
+- I `index.html`: slet også linjen i info-panelet,
+  `<div class="priv stats" data-i18n="statsNote">…</div>`. Ellers står der stadig »Anonym
+  besøgsstatistik via Cloudflare Web Analytics – ingen cookies.«, selv om intet tælles.
+  `statsNote`-teksterne i scriptet kan blive stående; uden linjen vises de ingen steder.
+- Slet også `test/analytics.test.js`: den tjekker, at beaconen er der, og fejler ellers.
 
 ### Cron-job
 
@@ -283,7 +301,7 @@ ikke offentlige, så laget er statisk topologi.
 
 | Fil | Hvad den er |
 |---|---|
-| `index.html` | Selve kortet. Én fil på ca. 1 MB med alt indeni — 3D-motor, geografi, infrastruktur og en indbygget 30-dages historik som reserve |
+| `index.html` | Selve kortet. Én fil på ca. 1 MB med alt indeni — 3D-motor, geografi, infrastruktur og en indbygget 30-dages historik som reserve. Det eneste script udefra er Cloudflare Web Analytics' beacon til besøgsstatistikken for el.gridkort.dk, og info-panelet har en linje om den, se [Besøgsstatistik](#besøgsstatistik) |
 | `data.json` | Det nyeste måleøjeblik, ca. 470 bytes. Skrives af workflowet |
 | `hist.json` | 30 dages historik i timeopløsning, ca. 70 KB. Tegner tidslinjen. Fornyes når den er over 6 timer gammel |
 | `poll.js` | Henter det nyeste måleøjeblik. Node 18+, ingen pakker. Kan køres hvor som helst |
@@ -295,8 +313,8 @@ ikke offentlige, så laget er statisk topologi.
 | `.github/workflows/update-data.yml` | Tidsplanen. Kører scripterne og committer filerne |
 | `README.md` | Denne fil |
 | `robots.txt`, `sitemap.xml`, `llms.txt` | Til søgemaskiner og AI-søgemaskiner. `llms.txt` beskriver kortet, kilderne og hvad der er beregnet. Ret den, hvis kortet ændrer sig |
-| `404.html` | Siden for en forkert adresse på el.gridkort.dk |
-| `tv2/index.html` | Sender `el.gridkort.dk/tv2` videre til TV 2-indslaget. Se [TV 2-indslag i kiosk-tilstand](#tv-2-indslag-i-kiosk-tilstand) |
+| `404.html` | Siden for en forkert adresse på el.gridkort.dk. Har samme beacon, se [Besøgsstatistik](#besøgsstatistik) |
+| `tv2/index.html` | Sender `el.gridkort.dk/tv2` videre til TV 2-indslaget. Se [TV 2-indslag i kiosk-tilstand](#tv-2-indslag-i-kiosk-tilstand). Har samme beacon, se [Besøgsstatistik](#besøgsstatistik) |
 
 Kortet virker **uden** `hist.json` — så bruger det den historik der er bygget ind i
 `index.html`. Den er ældre, men korrekt, og det er den der gør at en enkelt downloadet

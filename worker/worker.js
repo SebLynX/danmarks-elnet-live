@@ -11,6 +11,13 @@
    first and the pipeline's files second, so the Worker being down
    costs freshness, never the feature.
 
+   The same three pipeline files are also served here, unchanged, at
+   /hist.json, /data.json and /prices.json. They are read from the
+   service binding env.DATA (Worker el-gridkort) first. env.DATA_ORIGIN
+   is only the fallback when that binding is absent. A private repo
+   does not take the EXPO build's copies with it.
+   /elnet/now.json and /elnet/prices.json stay the live routes.
+
    Why a Worker at all: api.energidataservice.dk answers every
    request that carries an Origin header (= every browser request)
    with an empty 200. A Worker is not a browser; it sends no Origin
@@ -42,7 +49,8 @@ const XK = ['DK1_DE', 'DK1_NL', 'DK1_GB', 'DK1_NO', 'DK1_SE', 'DK1_DK2', 'DK2_DE
 const PK = ['DK1', 'DK2', 'DE', 'NO2', 'SE3', 'SE4'];
 
 /* who may read the frame from a browser: the maps, the old GitHub
-   address, Energinet's internal hosting, and a copy opened from disk */
+   address, Energinet's internal hosting, and a copy opened from disk.
+   This list is only for the existing /elnet/* routes. It matches main. */
 const ALLOW = [
   /^https:\/\/([a-z0-9-]+\.)*gridkort\.dk$/,
   /^https:\/\/seblynx\.github\.io$/,
@@ -50,6 +58,21 @@ const ALLOW = [
   /^null$/
 ];
 const cors = origin => origin && ALLOW.some(re => re.test(origin))
+  ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' } : { 'Vary': 'Origin' };
+
+/* Exact origins for /hist.json, /data.json and /prices.json only.
+   No subdomain wildcards. 'null' is a map opened from disk: the JSON
+   is public and read-only, and credentials are not allowed.
+   https://seblynx.github.io comes off this set after step C
+   (docs/cloudflare-migration.md). */
+const SNAP_ALLOW = new Set([
+  'https://el.gridkort.dk',
+  'https://gridkort.dk',
+  'https://seblynx.github.io',
+  'https://expo.energinet.dk',
+  'null'
+]);
+const snapCors = origin => origin && SNAP_ALLOW.has(origin)
   ? { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin' } : { 'Vary': 'Origin' };
 
 /* One dataset at a time. While a dataset's block marker is in the cache,
@@ -192,11 +215,73 @@ async function buildPrices() {
   return { generated: new Date().toISOString(), source: 'Energinet (www.energidataservice.dk) · DayAheadPrices · CC BY 4.0 (via api.gridkort.dk)', unit: 'DKK/MWh', ...d };
 }
 
+/* Pipeline files published by the el-gridkort Worker. Not the live
+   /elnet/now.json and /elnet/prices.json routes: those still ask Energinet.
+   Prefer env.DATA, a service binding to el-gridkort. Plain fetch() to that
+   Worker's workers.dev hostname on the same account fails; see
+   https://developers.cloudflare.com/workers/runtime-apis/fetch/
+   DATA_ORIGIN is only the fallback when the binding is absent, and it must
+   be an https origin with no path that is not a same-account Worker. */
+const SNAPSHOT_TTL = 60;
+const SNAPSHOTS = { '/hist.json': 'hist.json', '/data.json': 'data.json', '/prices.json': 'prices.json' };
+function snapshotOrigin(env) {
+  const raw = env && typeof env.DATA_ORIGIN === 'string' ? env.DATA_ORIGIN.trim() : '';
+  if (!raw) return { error: 'DATA binding is not set, and DATA_ORIGIN is not set' };
+  let u;
+  try { u = new URL(raw); } catch (e) { return { error: 'DATA_ORIGIN must be an https origin' }; }
+  if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash) return { error: 'DATA_ORIGIN must be an https origin' };
+  if (u.pathname !== '/' && u.pathname !== '') return { error: 'DATA_ORIGIN must be an https origin' };
+  return { origin: u.origin };
+}
+function snapHeaders(h) {
+  return { ...h, 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+}
+async function readSnapshot(r) {
+  if (r.status >= 300 && r.status < 400) throw new Error('redirect refused');
+  if (r.status !== 200) throw new Error('HTTP ' + r.status);
+  const body = await r.text();
+  if (!body.trim() || body.length > 2000000) throw new Error('unexpected snapshot size');
+  return body;
+}
+async function fetchSnapshot(env, file) {
+  if (env && env.DATA && typeof env.DATA.fetch === 'function') {
+    return readSnapshot(await env.DATA.fetch(new Request('https://el-gridkort.internal/' + file, { method: 'GET' })));
+  }
+  const where = snapshotOrigin(env);
+  if (!where.origin) {
+    const err = new Error(where.error);
+    err.code = 503;
+    throw err;
+  }
+  return readSnapshot(await fetch(where.origin + '/' + file, {
+    method: 'GET', redirect: 'manual',
+    headers: { 'User-Agent': 'gridkort-api (gridkort.dk, hobby map)' },
+    signal: AbortSignal.timeout(8000)
+  }));
+}
+async function serveSnapshot(env, ctx, file, h) {
+  const cacheName = 'snapshot-' + file;
+  try {
+    const hit = await caches.default.match(key(cacheName));
+    if (hit) return new Response(await hit.text(), { status: 200, headers: snapHeaders(h) });
+    const body = await fetchSnapshot(env, file);
+    if (ctx && ctx.waitUntil) ctx.waitUntil(caches.default.put(key(cacheName),
+      new Response(body, { headers: { 'Cache-Control': 'public, max-age=' + SNAPSHOT_TTL } })));
+    return new Response(body, { status: 200, headers: snapHeaders(h) });
+  } catch (e) {
+    if (e && e.code === 503) return new Response(JSON.stringify({ error: e.message }), { status: 503, headers: snapHeaders(h) });
+    console.error(JSON.stringify({ message: 'snapshot failed', file, error: String(e && e.message || e) }));
+    return new Response(JSON.stringify({ error: 'snapshot unavailable' }), { status: 502, headers: snapHeaders(h) });
+  }
+}
+
 export default {
   async fetch(req, env, ctx) {
-    const url = new URL(req.url), h = cors(req.headers.get('Origin'));
+    const url = new URL(req.url);
+    const h = SNAPSHOTS[url.pathname] ? snapCors(req.headers.get('Origin')) : cors(req.headers.get('Origin'));
     if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...h, 'Access-Control-Allow-Methods': 'GET', 'Access-Control-Max-Age': '86400' } });
     if (req.method !== 'GET') return new Response('GET only', { status: 405, headers: h });
+    if (SNAPSHOTS[url.pathname]) return serveSnapshot(env, ctx, SNAPSHOTS[url.pathname], h);
     if (url.pathname === '/') return new Response('gridkort.dk data service. Energinet Energi Data Service, cached. Map: https://el.gridkort.dk/\n', { headers: { ...h, 'Content-Type': 'text/plain; charset=utf-8' } });
     /* what this Cloudflare location is waiting for: one line per paused dataset */
     if (url.pathname === '/elnet/status') {

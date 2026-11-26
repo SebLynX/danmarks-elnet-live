@@ -5,3 +5,13 @@ node_modules/
 # med alt hvad der ligger der, ogsaa filer git ikke sporer.
 power_raw.json
 history.json
+
+# cloudflare/assemble.js writes this for wrangler. It is not part of the
+# GitHub Pages tree: upload-pages-artifact publishes the checkout, and a
+# generated copy of the site must not ride along.
+cloudflare/dist/
+
+# Local wrangler dev state. Not part of the site.
+.wrangler/
+.dev.vars*
+.env*
